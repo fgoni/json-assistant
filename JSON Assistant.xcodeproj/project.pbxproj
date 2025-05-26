@@ -15,6 +15,7 @@
 		52B7731E2C73C615007F17CC /* JSON_AssistantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B7731D2C73C615007F17CC /* JSON_AssistantTests.swift */; };
 		52B773282C73C615007F17CC /* JSON_AssistantUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773272C73C615007F17CC /* JSON_AssistantUITests.swift */; };
 		52B7732A2C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */; };
+		52B773392C73C90B007F17CC /* JSONView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773382C73C90B007F17CC /* JSONView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +48,7 @@
 		52B773232C73C615007F17CC /* JSON AssistantUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "JSON AssistantUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52B773272C73C615007F17CC /* JSON_AssistantUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantUITests.swift; sourceTree = "<group>"; };
 		52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		52B773382C73C90B007F17CC /* JSONView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,9 +99,10 @@
 		52B773082C73C613007F17CC /* JSON Assistant */ = {
 			isa = PBXGroup;
 			children = (
-				52B773092C73C613007F17CC /* JSON_AssistantApp.swift */,
+				52B773382C73C90B007F17CC /* JSONView.swift */,
 				52B7730B2C73C613007F17CC /* ContentView.swift */,
 				52B7730D2C73C613007F17CC /* Item.swift */,
+				52B773092C73C613007F17CC /* JSON_AssistantApp.swift */,
 				52B7730F2C73C614007F17CC /* Assets.xcassets */,
 				52B773142C73C614007F17CC /* JSON_Assistant.entitlements */,
 				52B773112C73C614007F17CC /* Preview Content */,
@@ -148,6 +151,8 @@
 			dependencies = (
 			);
 			name = "JSON Assistant";
+			packageProductDependencies = (
+			);
 			productName = "JSON Assistant";
 			productReference = 52B773062C73C613007F17CC /* JSON Assistant.app */;
 			productType = "com.apple.product-type.application";
@@ -220,6 +225,8 @@
 				Base,
 			);
 			mainGroup = 52B772FD2C73C613007F17CC;
+			packageReferences = (
+			);
 			productRefGroup = 52B773072C73C613007F17CC /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -264,6 +271,7 @@
 			files = (
 				52B7730C2C73C613007F17CC /* ContentView.swift in Sources */,
 				52B7730E2C73C613007F17CC /* Item.swift in Sources */,
+				52B773392C73C90B007F17CC /* JSONView.swift in Sources */,
 				52B7730A2C73C613007F17CC /* JSON_AssistantApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
