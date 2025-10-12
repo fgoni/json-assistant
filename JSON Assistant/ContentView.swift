@@ -440,6 +440,27 @@ struct JSONInputView: View {
                 .keyboardShortcut("n", modifiers: [.command])
             }
 
+            #if canImport(AppKit)
+            SyntaxHighlightedTextEditor(
+                text: $jsonViewModel.inputJSON,
+                palette: palette,
+                onPaste: { pastedText in
+                    jsonViewModel.inputJSON = pastedText
+                    jsonViewModel.beautifyJSON()
+                }
+            )
+            .onChange(of: jsonViewModel.inputJSON) { newValue in
+                guard !jsonViewModel.isProgrammaticInputUpdate else { return }
+                jsonViewModel.parseJSON(newValue, autoExpand: false)
+            }
+            .padding(12)
+            .background(palette.surface)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+            )
+            #else
             TextEditor(text: $jsonViewModel.inputJSON)
                 .font(.themedCode())
                 .foregroundColor(palette.text)
@@ -449,6 +470,19 @@ struct JSONInputView: View {
                     guard !jsonViewModel.isProgrammaticInputUpdate else { return }
                     jsonViewModel.parseJSON(newValue, autoExpand: false)
                 }
+                .onPasteCommand(of: [.plainText]) { providers in
+                    for provider in providers {
+                        _ = provider.loadDataRepresentation(for: .plainText) { data, error in
+                            guard let data = data,
+                                  let pastedText = String(data: data, encoding: .utf8) else { return }
+
+                            DispatchQueue.main.async {
+                                jsonViewModel.inputJSON = pastedText
+                                jsonViewModel.beautifyJSON()
+                            }
+                        }
+                    }
+                }
             .padding(12)
             .background(palette.surface)
             .cornerRadius(12)
@@ -456,6 +490,7 @@ struct JSONInputView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
             )
+            #endif
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
