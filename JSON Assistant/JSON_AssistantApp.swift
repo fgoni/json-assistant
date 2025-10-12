@@ -1,18 +1,55 @@
-//
-//  JSON_AssistantApp.swift
-//  JSON Assistant
-//
-//  Created by Facundo Goñi on 19/08/2024.
-//
-
 import SwiftUI
-import SwiftData
 
 @main
-struct JSONAssistantApp: App {
+struct JSON_AssistantApp: App {
+    @StateObject private var viewModel = JSONViewModel()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(jsonViewModel: viewModel)
+        }
+#if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+#endif
+        .commands {
+            CommandMenu("JSON Actions") {
+                Button("New Entry") {
+                    viewModel.startNewEntry()
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                
+                Button("Collapse All") {
+                    viewModel.collapseAll()
+                }
+                .keyboardShortcut("-", modifiers: [.command, .shift])
+                
+                Button("Expand All") {
+                    viewModel.expandAll()
+                }
+                .keyboardShortcut("=", modifiers: [.command, .shift])
+                
+                Divider()
+                
+                Button("Select Latest 1") {
+                    viewModel.selectLatest(1)
+                }
+                .keyboardShortcut("1", modifiers: .command)
+                
+                Button("Select Latest 2") {
+                    viewModel.selectLatest(2)
+                }
+                .keyboardShortcut("2", modifiers: .command)
+                
+                Button("Select Latest 3") {
+                    viewModel.selectLatest(3)
+                }
+                .keyboardShortcut("3", modifiers: .command)
+                
+                Button("Select Latest 4") {
+                    viewModel.selectLatest(4)
+                }
+                .keyboardShortcut("4", modifiers: .command)
+            }
         }
     }
 }

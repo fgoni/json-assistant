@@ -16,6 +16,7 @@
 		52B773282C73C615007F17CC /* JSON_AssistantUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773272C73C615007F17CC /* JSON_AssistantUITests.swift */; };
 		52B7732A2C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */; };
 		52B773392C73C90B007F17CC /* JSONView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773382C73C90B007F17CC /* JSONView.swift */; };
+		7C0E56A02CDC9607004B6C51 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0E569F2CDC9607004B6C51 /* Theme.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +50,7 @@
 		52B773272C73C615007F17CC /* JSON_AssistantUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantUITests.swift; sourceTree = "<group>"; };
 		52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		52B773382C73C90B007F17CC /* JSONView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONView.swift; sourceTree = "<group>"; };
+		7C0E569F2CDC9607004B6C51 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,6 +101,7 @@
 		52B773082C73C613007F17CC /* JSON Assistant */ = {
 			isa = PBXGroup;
 			children = (
+				7C0E569F2CDC9607004B6C51 /* Theme.swift */,
 				52B773382C73C90B007F17CC /* JSONView.swift */,
 				52B7730B2C73C613007F17CC /* ContentView.swift */,
 				52B7730D2C73C613007F17CC /* Item.swift */,
@@ -269,6 +272,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7C0E56A02CDC9607004B6C51 /* Theme.swift in Sources */,
 				52B7730C2C73C613007F17CC /* ContentView.swift in Sources */,
 				52B7730E2C73C613007F17CC /* Item.swift in Sources */,
 				52B773392C73C90B007F17CC /* JSONView.swift in Sources */,
@@ -437,6 +441,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"JSON Assistant/Preview Content\"";
+				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -463,6 +468,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"JSON Assistant/Preview Content\"";
+				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
