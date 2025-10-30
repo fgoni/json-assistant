@@ -55,6 +55,8 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         let palette: ThemePalette
         let onPaste: (String) -> Void
         weak var textView: NSTextView?
+        private var highlightWorkItem: DispatchWorkItem?
+        private let highlightQueue = DispatchQueue(label: "com.jsonassistant.highlighting", qos: .userInitiated)
 
         init(text: Binding<String>, palette: ThemePalette, onPaste: @escaping (String) -> Void) {
             self._text = text
@@ -65,7 +67,16 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
-            updateSyntaxHighlighting()
+
+            // Debounce syntax highlighting
+            highlightWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                DispatchQueue.main.async {
+                    self?.updateSyntaxHighlighting()
+                }
+            }
+            highlightWorkItem = workItem
+            highlightQueue.asyncAfter(deadline: .now() + 0.15, execute: workItem)
         }
 
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
@@ -86,12 +97,25 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
             guard let textView = textView else { return }
             guard let textStorage = textView.textStorage else { return }
 
+            let text = textStorage.string
+            let textSize = text.utf8.count
+
+            // Disable syntax highlighting for very large files (>500KB)
+            let maxHighlightSize = 500_000
+            if textSize > maxHighlightSize {
+                let fullRange = NSRange(location: 0, length: textStorage.length)
+                textStorage.addAttribute(.foregroundColor, value: NSColor(palette.text), range: fullRange)
+                return
+            }
+
+            // Batch attribute updates for better performance
+            textStorage.beginEditing()
+            defer { textStorage.endEditing() }
+
             let fullRange = NSRange(location: 0, length: textStorage.length)
 
             // Reset to default text color
             textStorage.addAttribute(.foregroundColor, value: NSColor(palette.text), range: fullRange)
-
-            let text = textStorage.string
 
             // Apply JSON syntax highlighting
             highlightJSON(in: text, textStorage: textStorage)
@@ -258,6 +282,10 @@ struct SidebarView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     let palette: ThemePalette
     private let calendar = Calendar.current
+    @State private var searchText: String = ""
+    @State private var isShowingFeedbackSheet: Bool = false
+    @State private var feedbackDraft: String = ""
+    @State private var didSubmitFeedback: Bool = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -271,9 +299,10 @@ struct SidebarView: View {
                 .foregroundColor(palette.text)
                 .padding(.bottom, 8)
 
+            searchField
 
 
-            if sections.isEmpty {
+            if jsonViewModel.parsedJSONs.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray")
                         .font(.system(size: 28, weight: .semibold))
@@ -282,12 +311,28 @@ struct SidebarView: View {
                         .font(.themedUI(size: 12))
                         .foregroundColor(palette.muted)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .background(palette.surface)
+            } else if filteredSections.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "text.magnifyingglass")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(palette.punctuation)
+                    Text("No matches found")
+                        .font(.themedUI(size: 12))
+                        .foregroundColor(palette.muted)
+                    if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("Tried \"\(searchText)\" in names and JSON paths.")
+                            .font(.themedUI(size: 11))
+                            .foregroundColor(palette.muted.opacity(0.8))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .background(palette.surface)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12, pinnedViews: []) {
-                        ForEach(sections) { section in
+                        ForEach(filteredSections) { section in
                             VStack(alignment: .leading, spacing: 8) {
                 Text(section.title)
                     .font(.themedUI(size: 11))
@@ -323,14 +368,96 @@ struct SidebarView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+
+            Spacer(minLength: 12)
+
+            VStack(spacing: 8) {
+                Button {
+                    jsonViewModel.resetFeedbackStatus()
+                    feedbackDraft = ""
+                    didSubmitFeedback = false
+                    isShowingFeedbackSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(jsonViewModel.isSubmittingFeedback ? "Submitting..." : "Submit Feedback")
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(palette.surface)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(palette.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(jsonViewModel.isSubmittingFeedback)
+                .opacity(jsonViewModel.isSubmittingFeedback ? 0.75 : 1)
+
+                if let message = jsonViewModel.feedbackSubmissionMessage {
+                    Text(message)
+                        .font(.themedUI(size: 11))
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(jsonViewModel.feedbackSubmissionIsError ? palette.boolFalse : palette.muted)
+                        .frame(maxWidth: .infinity)
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 16)
         .background(palette.surface)
+        .sheet(isPresented: $isShowingFeedbackSheet) {
+            FeedbackSheet(
+                palette: palette,
+                jsonViewModel: jsonViewModel,
+                feedbackText: $feedbackDraft,
+                isPresented: $isShowingFeedbackSheet,
+                didSubmit: $didSubmitFeedback
+            )
+        }
     }
 
-    private var sections: [SidebarSection] {
-        let grouped = Dictionary(grouping: jsonViewModel.parsedJSONs) { calendar.startOfDay(for: $0.date) }
+    @ViewBuilder
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(palette.muted)
+            TextField("Search saved JSON", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.themedUI(size: 12))
+                .foregroundColor(palette.text)
+                .disableAutocorrection(true)
+            if !searchText.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        searchText = ""
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(palette.muted.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(palette.background.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+        )
+        .padding(.horizontal, 6)
+    }
+
+    private var filteredSections: [SidebarSection] {
+        let grouped = Dictionary(grouping: filteredJSONs) { calendar.startOfDay(for: $0.date) }
         return grouped
             .map { (key: Date, value: [ParsedJSON]) -> SidebarSection in
                 SidebarSection(
@@ -340,6 +467,10 @@ struct SidebarView: View {
                 )
             }
             .sorted { $0.id > $1.id }
+    }
+
+    private var filteredJSONs: [ParsedJSON] {
+        jsonViewModel.filteredParsedJSONs(matching: searchText)
     }
 
     private func sectionTitle(for date: Date) -> String {
@@ -370,6 +501,113 @@ struct SidebarView: View {
         let id: Date
         let title: String
         let items: [ParsedJSON]
+    }
+
+    private struct FeedbackSheet: View {
+        let palette: ThemePalette
+        @ObservedObject var jsonViewModel: JSONViewModel
+        @Binding var feedbackText: String
+        @Binding var isPresented: Bool
+        @Binding var didSubmit: Bool
+
+        var body: some View {
+            let trimmedText = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isSendDisabled = jsonViewModel.isSubmittingFeedback || trimmedText.isEmpty
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Submit Feedback")
+                    .font(.themedUI(size: 14))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+
+                Text("Tell us what you think and we'll send it to the team.")
+                    .font(.themedUI(size: 12))
+                    .foregroundColor(palette.muted)
+
+                TextEditor(text: $feedbackText)
+                    .font(.themedUI(size: 12))
+                    .foregroundColor(palette.text)
+                    .padding(8)
+                    .frame(minHeight: 160)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(palette.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                    )
+
+                if let message = jsonViewModel.feedbackSubmissionMessage, didSubmit {
+                    HStack(spacing: 8) {
+                        Image(systemName: jsonViewModel.feedbackSubmissionIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(jsonViewModel.feedbackSubmissionIsError ? palette.boolFalse : palette.accent)
+                        Text(message)
+                            .font(.themedUI(size: 11))
+                            .foregroundColor(jsonViewModel.feedbackSubmissionIsError ? palette.boolFalse : palette.muted)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                HStack(spacing: 10) {
+                    Spacer()
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .font(.themedUI(size: 12))
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(palette.surface.opacity(0.7))
+                    )
+                    .buttonStyle(.plain)
+
+                    Button {
+                        didSubmit = true
+                        jsonViewModel.submitFeedback(message: feedbackText)
+                    } label: {
+                        HStack(spacing: 6) {
+                            if jsonViewModel.isSubmittingFeedback {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .scaleEffect(0.6, anchor: .center)
+                            }
+                            Text(jsonViewModel.isSubmittingFeedback ? "Sending..." : "Send Feedback")
+                        }
+                        .font(.themedUI(size: 12))
+                        .fontWeight(.semibold)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .foregroundColor(palette.surface)
+                        .background(palette.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSendDisabled)
+                }
+            }
+            .padding(24)
+            .frame(minWidth: 360)
+            .background(palette.background)
+            .onChange(of: feedbackText) { _ in
+                if didSubmit && jsonViewModel.feedbackSubmissionIsError {
+                    jsonViewModel.resetFeedbackStatus()
+                    didSubmit = false
+                }
+            }
+            .onChange(of: jsonViewModel.isSubmittingFeedback) { submitting in
+                guard !submitting,
+                      didSubmit,
+                      !jsonViewModel.feedbackSubmissionIsError,
+                      let message = jsonViewModel.feedbackSubmissionMessage,
+                      !message.isEmpty else { return }
+                feedbackText = ""
+                didSubmit = false
+                isPresented = false
+            }
+        }
     }
 
     private static let monthFormatter: DateFormatter = {
@@ -446,7 +684,7 @@ struct JSONInputView: View {
                 palette: palette,
                 onPaste: { pastedText in
                     jsonViewModel.inputJSON = pastedText
-                    jsonViewModel.beautifyJSON()
+                    jsonViewModel.beautifyAndSaveJSON()
                 }
             )
             .onChange(of: jsonViewModel.inputJSON) { newValue in
@@ -478,7 +716,7 @@ struct JSONInputView: View {
 
                             DispatchQueue.main.async {
                                 jsonViewModel.inputJSON = pastedText
-                                jsonViewModel.beautifyJSON()
+                                jsonViewModel.beautifyAndSaveJSON()
                             }
                         }
                     }
@@ -510,6 +748,7 @@ struct JSONOutputView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(palette.muted)
                 Spacer()
+                formattedSearchControls
                 Button {
                     jsonViewModel.collapseAll()
                 } label: {
@@ -548,20 +787,30 @@ struct JSONOutputView: View {
             }
 
             if let rootNode = jsonViewModel.rootNode {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette)
-                            .font(.themedCode())
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette)
+                                .font(.themedCode())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .background(palette.surface)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                    )
+                    .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
+                        guard let targetID else { return }
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(targetID, anchor: .center)
+                            }
+                        }
+                    }
                 }
-                .background(palette.surface)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
-                )
             } else {
                 JSONPlaceholderView(
                     palette: palette,
@@ -574,6 +823,87 @@ struct JSONOutputView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
+    }
+
+    private var formattedSearchControls: some View {
+        let matchCount = jsonViewModel.formattedSearchMatchOrder.count
+        let focusedIndex = jsonViewModel.formattedSearchFocusedIndex
+
+        return HStack(spacing: 10) {
+            formattedSearchTextField
+
+            if matchCount > 0 {
+                let index = focusedIndex ?? 0
+
+                Text("\(index + 1)/\(matchCount)")
+                    .font(.themedUI(size: 11))
+                    .foregroundColor(palette.muted)
+
+                HStack(spacing: 4) {
+                    Button {
+                        jsonViewModel.focusPreviousFormattedMatch()
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(matchCount > 1 ? palette.accent : palette.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(matchCount <= 1)
+
+                    Button {
+                        jsonViewModel.focusNextFormattedMatch()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(matchCount > 1 ? palette.accent : palette.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(matchCount <= 1)
+                }
+            }
+        }
+        .frame(minWidth: 160, maxWidth: 320)
+    }
+
+    private var formattedSearchTextField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(palette.muted)
+            TextField(
+                "Search formatted JSON",
+                text: Binding(
+                    get: { jsonViewModel.formattedSearchQuery },
+                    set: { jsonViewModel.updateFormattedSearch(with: $0) }
+                )
+            )
+            .textFieldStyle(.plain)
+            .font(.themedUI(size: 12))
+            .foregroundColor(palette.text)
+            .disableAutocorrection(true)
+            if !jsonViewModel.formattedSearchQuery.isEmpty {
+                Button {
+                    jsonViewModel.updateFormattedSearch(with: "")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(palette.muted.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(palette.background.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+        )
+        .frame(minWidth: 160)
     }
 }
 

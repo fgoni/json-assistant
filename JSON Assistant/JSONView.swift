@@ -470,17 +470,29 @@ struct CollapsibleJSONView: View {
     @ObservedObject var node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
-    
+    let depth: Int
+
+    init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0) {
+        self.node = node
+        self.viewModel = viewModel
+        self.palette = palette
+        self.depth = depth
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             JSONNodeView(node: node, viewModel: viewModel, palette: palette)
-            if node.isExpanded {
+
+            // Only render children when expanded, and limit depth to prevent excessive nesting
+            if node.isExpanded && !node.children.isEmpty && depth < 50 {
                 ForEach(node.children) { child in
-                    CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette)
+                    CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
                         .padding(.leading, 16)
+                        .id(child.id)
                 }
             }
         }
+        .id(node.id)
     }
 }
 
@@ -491,6 +503,27 @@ struct JSONNodeView: View {
     let palette: ThemePalette
     
     var body: some View {
+        let isHighlighted = viewModel.formattedSearchMatches.contains(node.id)
+        let isFocused = viewModel.formattedSearchFocusedID == node.id
+
+        let (keyColor, punctuationColor, keyWeight): (Color, Color, Font.Weight) = {
+            if isFocused {
+                return (palette.surface, palette.surface.opacity(0.95), .semibold)
+            } else if isHighlighted {
+                return (palette.accent, palette.accent.opacity(0.9), .semibold)
+            } else {
+                return (palette.key, palette.punctuation, .regular)
+            }
+        }()
+
+        let backgroundColor = isFocused
+            ? palette.accent.opacity(0.32)
+            : (isHighlighted ? palette.accent.opacity(0.18) : Color.clear)
+        let borderColor = isFocused
+            ? palette.accent.opacity(0.6)
+            : (isHighlighted ? palette.accent.opacity(0.35) : Color.clear)
+        let hasBorder = isFocused || isHighlighted
+
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: node.isExpanded ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
                 .foregroundColor(palette.muted)
@@ -502,13 +535,15 @@ struct JSONNodeView: View {
             
             if node.isRoot {
                 Text(node.typeDescription)
-                    .foregroundColor(palette.muted)
-                    .fontWeight(.semibold)
+                    .foregroundColor(isFocused ? palette.surface : palette.muted)
+                    .fontWeight(isFocused ? .semibold : .regular)
             } else {
                 Text(node.key)
-                    .foregroundColor(palette.key)
+                    .foregroundColor(keyColor)
+                    .fontWeight(keyWeight)
                 Text(":")
-                    .foregroundColor(palette.punctuation)
+                    .foregroundColor(punctuationColor)
+                    .fontWeight(keyWeight)
             }
             
             if node.children.isEmpty {
@@ -520,6 +555,16 @@ struct JSONNodeView: View {
             
             Spacer(minLength: 0)
         }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(backgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(borderColor, lineWidth: hasBorder ? 1 : 0)
+        )
     }
     
     @ViewBuilder
@@ -576,17 +621,78 @@ struct JSONNodeView: View {
 @MainActor
 class JSONViewModel: ObservableObject {
     @Published var inputJSON: String = ""
-    @Published var rootNode: JSONNode?
+    @Published var rootNode: JSONNode? {
+        didSet { rebuildNodeLookup() }
+    }
     @Published var errorMessage: String?
     @Published var parsedJSONs: [ParsedJSON] = []
     @Published var selectedJSONID: UUID?
+    @Published var isSubmittingFeedback: Bool = false
+    @Published var feedbackSubmissionMessage: String?
+    @Published var feedbackSubmissionIsError: Bool = false
+    @Published var formattedSearchQuery: String = ""
+    @Published var formattedSearchMatches: Set<UUID> = []
+    @Published private(set) var formattedSearchMatchOrder: [UUID] = []
+    @Published private(set) var formattedSearchFocusedID: UUID?
+    @Published private(set) var formattedSearchFocusedIndex: Int?
     private(set) var isProgrammaticInputUpdate: Bool = false
-    
+    private var parseWorkItem: DispatchWorkItem?
+    private var searchTokenCache: [UUID: [String]] = [:]
+    private var formattedSearchWorkItem: DispatchWorkItem?
+    private var formattedSearchComputationItem: DispatchWorkItem?
+    private let formattedSearchDebounceInterval: TimeInterval = 0.3
+    private var formattedSearchSnapshot: JSONNodeSnapshot?
+    private var nodeLookup: [UUID: JSONNode] = [:]
+
     init() {
         loadSavedJSONs()
     }
 
+    private func rebuildNodeLookup() {
+        nodeLookup.removeAll()
+        guard let rootNode else { return }
+
+        var stack: [JSONNode] = [rootNode]
+        while let node = stack.popLast() {
+            nodeLookup[node.id] = node
+            stack.append(contentsOf: node.children)
+        }
+    }
+
     
+    private func clearFormattedSearchResults() {
+        formattedSearchWorkItem?.cancel()
+        formattedSearchWorkItem = nil
+        formattedSearchComputationItem?.cancel()
+        formattedSearchComputationItem = nil
+        formattedSearchMatches = []
+        formattedSearchMatchOrder = []
+        formattedSearchFocusedID = nil
+        formattedSearchFocusedIndex = nil
+    }
+
+    private func updateFocusedMatch(to index: Int?) {
+        guard let index = index,
+              index >= 0,
+              index < formattedSearchMatchOrder.count else {
+            formattedSearchFocusedIndex = nil
+            formattedSearchFocusedID = nil
+            return
+        }
+
+        formattedSearchFocusedIndex = index
+        let targetID = formattedSearchMatchOrder[index]
+
+        if formattedSearchFocusedID != targetID {
+            formattedSearchFocusedID = targetID
+        } else {
+            formattedSearchFocusedID = nil
+            DispatchQueue.main.async { [weak self] in
+                self?.formattedSearchFocusedID = targetID
+            }
+        }
+    }
+
     func parseAndSaveJSON(_ jsonString: String) {
         parseJSON(jsonString)
         if errorMessage == nil && !jsonString.isEmpty {
@@ -596,40 +702,73 @@ class JSONViewModel: ObservableObject {
         }
     }
 
-    
+
     func parseJSON(_ jsonString: String, autoExpand: Bool = true) {
         guard !jsonString.isEmpty else {
+            parseWorkItem?.cancel()
             DispatchQueue.main.async {
                 self.rootNode = nil
                 self.errorMessage = nil
+                self.formattedSearchSnapshot = nil
+                self.clearFormattedSearchResults()
             }
             return
         }
-        
+
         guard !jsonString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            parseWorkItem?.cancel()
             DispatchQueue.main.async {
                 self.rootNode = nil
                 self.errorMessage = nil
+                self.formattedSearchSnapshot = nil
+                self.clearFormattedSearchResults()
             }
             return
         }
-        
+
+        // Debounce parsing for non-autoExpand (typing) mode
+        if !autoExpand {
+            parseWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.performParsing(jsonString, autoExpand: autoExpand)
+            }
+            parseWorkItem = workItem
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        } else {
+            // Immediate parsing for beautify/paste operations
+            parseWorkItem?.cancel()
+            performParsing(jsonString, autoExpand: autoExpand)
+        }
+    }
+
+    private func performParsing(_ jsonString: String, autoExpand: Bool) {
         do {
             var parser = OrderedJSONParser(jsonString)
             let parsedValue = try parser.parse()
-            let prettyString = OrderedJSONFormatter.prettyPrinted(parsedValue)
-        
+            let prettyString = autoExpand ? OrderedJSONFormatter.prettyPrinted(parsedValue) : ""
+
             let rootLabel = JSONNode.describeType(of: parsedValue)
             DispatchQueue.main.async {
                 if autoExpand {
                     self.setEditorText(prettyString)
                 }
                 self.rootNode = JSONNode(key: rootLabel, value: parsedValue, isRoot: true)
+                if let rootNode = self.rootNode {
+                    self.formattedSearchSnapshot = Self.makeSnapshot(from: rootNode)
+                }
                 self.errorMessage = nil
                 self.persistParsedJSONIfNeeded(originalJSON: jsonString, autoExpand: autoExpand)
-                
+                self.applyFormattedSearchIfNeeded()
+
                 if autoExpand {
-                    self.setExpansionState(for: self.rootNode, isExpanded: true)
+                    // Only auto-expand for reasonably sized JSON (<50KB)
+                    let shouldAutoExpand = jsonString.utf8.count < 50_000
+                    if shouldAutoExpand {
+                        self.setExpansionState(for: self.rootNode, isExpanded: true)
+                    } else {
+                        // For large JSON, only expand the root
+                        self.rootNode?.isExpanded = true
+                    }
                 }
             }
         } catch {
@@ -640,6 +779,8 @@ class JSONViewModel: ObservableObject {
                     self.errorMessage = "Error parsing JSON: \(error.localizedDescription)"
                 }
                 self.rootNode = nil
+                self.formattedSearchSnapshot = nil
+                self.clearFormattedSearchResults()
             }
         }
     }
@@ -654,6 +795,7 @@ class JSONViewModel: ObservableObject {
         let newParsedJSON = ParsedJSON(id: UUID(), date: Date(), name: "Unnamed", content: jsonString)
         parsedJSONs.append(newParsedJSON)
         saveParsedJSONs()
+        searchTokenCache[newParsedJSON.id] = nil
         return newParsedJSON
     }
 
@@ -673,6 +815,7 @@ class JSONViewModel: ObservableObject {
             )
             parsedJSONs[index] = updated
             saveParsedJSONs()
+            searchTokenCache[existing.id] = nil
         } else if let saved = saveJSON(originalJSON) {
             selectedJSONID = saved.id
         }
@@ -690,6 +833,7 @@ class JSONViewModel: ObservableObject {
         if selectedJSONID == json.id {
             selectedJSONID = nil
         }
+        searchTokenCache.removeValue(forKey: json.id)
     }
     
     func updateJSONName(_ json: ParsedJSON, newName: String) {
@@ -709,6 +853,7 @@ class JSONViewModel: ObservableObject {
         if let savedJSONs = UserDefaults.standard.data(forKey: "SavedJSONs") {
             if let decodedJSONs = try? JSONDecoder().decode([ParsedJSON].self, from: savedJSONs) {
                 parsedJSONs = decodedJSONs
+                searchTokenCache.removeAll()
             }
         }
     }
@@ -722,30 +867,33 @@ class JSONViewModel: ObservableObject {
     }
     
     private func setExpansionState(for node: JSONNode?, isExpanded: Bool) {
-           guard let node = node else { return }
-           node.isExpanded = isExpanded
-           node.children.forEach { setExpansionState(for: $0, isExpanded: isExpanded) }
-       }
-   
-       func toggleExpansion(for nodeID: UUID) {
-           if let node = findNode(withID: nodeID, in: rootNode) {
-               node.isExpanded.toggle()
-           }
-       }
-       
-       private func findNode(withID id: UUID, in node: JSONNode?) -> JSONNode? {
-           guard let node = node else { return nil }
-           if node.id == id { return node }
-           for child in node.children {
-               if let found = findNode(withID: id, in: child) {
-                   return found
-               }
-           }
-           return nil
-       }
+        guard let node = node else { return }
+        node.isExpanded = isExpanded
+        node.children.forEach { setExpansionState(for: $0, isExpanded: isExpanded) }
+    }
+
+    func toggleExpansion(for nodeID: UUID) {
+        guard let node = nodeLookup[nodeID] else { return }
+        node.isExpanded.toggle()
+    }
     
     func beautifyJSON() {
         parseJSON(inputJSON, autoExpand: true)
+    }
+
+    func beautifyAndSaveJSON() {
+        parseJSON(inputJSON, autoExpand: true)
+
+        // Save after beautification if parsing was successful
+        // The inputJSON will be updated with the beautified version by parseJSON
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            if self.errorMessage == nil && !self.inputJSON.isEmpty {
+                if let saved = self.saveJSON(self.inputJSON) {
+                    self.selectedJSONID = saved.id
+                }
+            }
+        }
     }
 
     func startNewEntry() {
@@ -753,6 +901,8 @@ class JSONViewModel: ObservableObject {
         setEditorText("")
         rootNode = nil
         errorMessage = nil
+        formattedSearchSnapshot = nil
+        clearFormattedSearchResults()
     }
 
     private func setEditorText(_ text: String) {
@@ -787,5 +937,437 @@ class JSONViewModel: ObservableObject {
         guard index < sorted.count else { return }
         loadSavedJSON(sorted[index])
     }
-    
+
+    func resetFeedbackStatus() {
+        feedbackSubmissionMessage = nil
+        feedbackSubmissionIsError = false
+    }
+
+    func submitFeedback(message: String) {
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isSubmittingFeedback else { return }
+
+        guard !trimmedMessage.isEmpty else {
+            feedbackSubmissionIsError = true
+            feedbackSubmissionMessage = "Feedback cannot be empty."
+            return
+        }
+
+        feedbackSubmissionIsError = false
+        feedbackSubmissionMessage = "Sending feedback..."
+        isSubmittingFeedback = true
+
+        var components = URLComponents(string: "https://notifier.coffeedevs.com/api/event")
+        components?.queryItems = [
+            URLQueryItem(name: "feedback", value: trimmedMessage)
+        ]
+
+        guard let url = components?.url else {
+            isSubmittingFeedback = false
+            feedbackSubmissionIsError = true
+            feedbackSubmissionMessage = "Invalid feedback endpoint."
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.httpBody = nil
+
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isSubmittingFeedback = false
+
+                if let error = error {
+                    self.feedbackSubmissionIsError = true
+                    self.feedbackSubmissionMessage = "Failed to submit: \(error.localizedDescription)"
+                    return
+                }
+
+                if let httpResponse = response as? HTTPURLResponse,
+                   (200..<300).contains(httpResponse.statusCode) {
+                    self.feedbackSubmissionIsError = false
+                    self.feedbackSubmissionMessage = "Feedback sent successfully."
+                } else {
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    self.feedbackSubmissionIsError = true
+                    if statusCode >= 0 {
+                        self.feedbackSubmissionMessage = "Unexpected response (\(statusCode))."
+                    } else {
+                        self.feedbackSubmissionMessage = "Unexpected response."
+                    }
+                }
+            }
+        }.resume()
+    }
+
+    func filteredParsedJSONs(matching query: String) -> [ParsedJSON] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return parsedJSONs }
+
+        let lowercasedQuery = trimmed.lowercased()
+        return parsedJSONs.filter { parsed in
+            matchesSearch(parsed, query: lowercasedQuery)
+        }
+    }
+
+    func updateFormattedSearch(with query: String, skipDebounce: Bool = false) {
+        formattedSearchQuery = query
+        formattedSearchWorkItem?.cancel()
+        formattedSearchComputationItem?.cancel()
+        formattedSearchComputationItem = nil
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let performSearch: () -> Void = { [weak self] in
+            guard let self = self else { return }
+
+            let currentTrimmed = self.formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard currentTrimmed == trimmed else { return }
+
+            if currentTrimmed.count < 3 {
+                self.clearFormattedSearchResults()
+                return
+            }
+
+            guard let rootNode = self.rootNode else {
+                self.clearFormattedSearchResults()
+                return
+            }
+
+            if self.formattedSearchSnapshot == nil || self.formattedSearchSnapshot?.id != rootNode.id {
+                self.formattedSearchSnapshot = Self.makeSnapshot(from: rootNode)
+            }
+
+            guard let snapshot = self.formattedSearchSnapshot else {
+                self.clearFormattedSearchResults()
+                return
+            }
+
+            let rootID = snapshot.id
+            let loweredQuery = currentTrimmed.lowercased()
+
+            weak var weakSelf = self
+            var computeItem: DispatchWorkItem?
+            computeItem = DispatchWorkItem {
+                guard let computeItem else { return }
+
+                do {
+                    let computation = try Self.computeFormattedSearchComputation(
+                        snapshot: snapshot,
+                        query: loweredQuery,
+                        shouldCancel: { computeItem.isCancelled }
+                    )
+
+                    if computeItem.isCancelled {
+                        return
+                    }
+
+                    DispatchQueue.main.async {
+                        guard let strongSelf = weakSelf else { return }
+                        guard !computeItem.isCancelled else { return }
+                        guard strongSelf.formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines) == currentTrimmed else { return }
+                        guard let currentRoot = strongSelf.rootNode, currentRoot.id == rootID else { return }
+
+                        strongSelf.applyFormattedSearchComputation(computation, rootNode: currentRoot)
+                        if strongSelf.formattedSearchComputationItem === computeItem {
+                            strongSelf.formattedSearchComputationItem = nil
+                        }
+                    }
+                } catch FormattedSearchCancellation.cancelled {
+                    return
+                } catch {
+                    return
+                }
+            }
+
+            guard let computeItem else { return }
+            self.formattedSearchComputationItem = computeItem
+            DispatchQueue.global(qos: .userInitiated).async(execute: computeItem)
+        }
+
+        if skipDebounce {
+            performSearch()
+            formattedSearchWorkItem = nil
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.formattedSearchWorkItem = nil
+            performSearch()
+        }
+
+        formattedSearchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + formattedSearchDebounceInterval,
+            execute: workItem
+        )
+    }
+
+    func focusNextFormattedMatch() {
+        let count = formattedSearchMatchOrder.count
+        guard count > 0 else {
+            updateFocusedMatch(to: nil)
+            return
+        }
+
+        let currentIndex = formattedSearchFocusedIndex ?? -1
+        let nextIndex = (currentIndex + 1) % count
+        updateFocusedMatch(to: nextIndex)
+    }
+
+    func focusPreviousFormattedMatch() {
+        let count = formattedSearchMatchOrder.count
+        guard count > 0 else {
+            updateFocusedMatch(to: nil)
+            return
+        }
+
+        let currentIndex = formattedSearchFocusedIndex ?? count
+        let previousIndex = (currentIndex - 1 + count) % count
+        updateFocusedMatch(to: previousIndex)
+    }
+
+    private func matchesSearch(_ parsed: ParsedJSON, query: String) -> Bool {
+        if parsed.name.lowercased().contains(query) { return true }
+
+        if parsed.content.lowercased().contains(query) { return true }
+
+        let tokens = tokensForSearch(in: parsed)
+        return tokens.contains { $0.contains(query) }
+    }
+
+    private func tokensForSearch(in parsed: ParsedJSON) -> [String] {
+        if let cached = searchTokenCache[parsed.id] {
+            return cached
+        }
+
+        guard let data = parsed.content.data(using: .utf8) else {
+            searchTokenCache[parsed.id] = []
+            return []
+        }
+
+        guard let jsonObject = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
+            searchTokenCache[parsed.id] = []
+            return []
+        }
+
+        var tokens: [String] = []
+        collectTokens(from: jsonObject, currentPath: "$", tokens: &tokens)
+
+        let lowercasedTokens = tokens.map { $0.lowercased() }
+        searchTokenCache[parsed.id] = lowercasedTokens
+        return lowercasedTokens
+    }
+
+    private func collectTokens(from value: Any, currentPath: String, tokens: inout [String]) {
+        tokens.append(currentPath)
+
+        switch value {
+        case let dict as [String: Any]:
+            for (key, childValue) in dict {
+                let childPath = currentPath == "$" ? "$.\(key)" : "\(currentPath).\(key)"
+                collectTokens(from: childValue, currentPath: childPath, tokens: &tokens)
+            }
+        case let array as [Any]:
+            for (index, childValue) in array.enumerated() {
+                let childPath = "\(currentPath)[\(index)]"
+                collectTokens(from: childValue, currentPath: childPath, tokens: &tokens)
+            }
+        case let string as String:
+            tokens.append(string)
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                tokens.append(number.boolValue ? "true" : "false")
+            } else {
+                tokens.append(number.stringValue)
+            }
+        case is NSNull:
+            tokens.append("null")
+        default:
+            tokens.append(String(describing: value))
+        }
+    }
+
+    private func applyFormattedSearchComputation(_ computation: FormattedSearchComputation, rootNode: JSONNode) {
+        formattedSearchMatches = computation.highlightIDs
+        formattedSearchMatchOrder = computation.matchesOrdered
+
+        let targetIndex: Int?
+        if let currentID = formattedSearchFocusedID,
+           let currentIndex = computation.matchesOrdered.firstIndex(of: currentID) {
+            targetIndex = currentIndex
+        } else {
+            targetIndex = computation.matchesOrdered.isEmpty ? nil : 0
+        }
+
+        updateFocusedMatch(to: targetIndex)
+
+        if !computation.expansionIDs.isEmpty {
+            expandNodes(with: computation.expansionIDs)
+        }
+    }
+
+    private func expandNodes(with expansionIDs: Set<UUID>) {
+        guard !expansionIDs.isEmpty else { return }
+
+        for id in expansionIDs {
+            nodeLookup[id]?.isExpanded = true
+        }
+    }
+
+    private static func makeSnapshot(from node: JSONNode) -> JSONNodeSnapshot {
+        let normalizedValue: String?
+        if node.children.isEmpty {
+            normalizedValue = normalizedValueString(for: node.value)
+        } else {
+            normalizedValue = nil
+        }
+
+        let children = node.children.map { makeSnapshot(from: $0) }
+
+        return JSONNodeSnapshot(
+            id: node.id,
+            keyLowercased: node.isRoot ? "" : node.key.lowercased(),
+            isRoot: node.isRoot,
+            typeDescriptionLowercased: node.typeDescription.lowercased(),
+            normalizedValue: normalizedValue,
+            children: children
+        )
+    }
+
+    private static func computeFormattedSearchComputation(snapshot: JSONNodeSnapshot, query: String, shouldCancel: () -> Bool) throws -> FormattedSearchComputation {
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        var matchesOrdered: [UUID] = []
+        var highlightIDs: Set<UUID> = []
+        var expansionIDs: Set<UUID> = []
+
+        var ancestry: [UUID] = []
+        _ = try collectMatches(
+            in: snapshot,
+            query: query,
+            ancestors: &ancestry,
+            matchesOrdered: &matchesOrdered,
+            highlightIDs: &highlightIDs,
+            expansionIDs: &expansionIDs,
+            shouldCancel: shouldCancel
+        )
+
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        return FormattedSearchComputation(matchesOrdered: matchesOrdered, highlightIDs: highlightIDs, expansionIDs: expansionIDs)
+    }
+
+    @discardableResult
+    private static func collectMatches(in snapshot: JSONNodeSnapshot, query: String, ancestors: inout [UUID], matchesOrdered: inout [UUID], highlightIDs: inout Set<UUID>, expansionIDs: inout Set<UUID>, shouldCancel: () -> Bool) throws -> Bool {
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        let didMatchSelf = snapshot.matches(query: query)
+        var didMatchChild = false
+
+        ancestors.append(snapshot.id)
+        defer { ancestors.removeLast() }
+
+        for child in snapshot.children {
+            if shouldCancel() {
+                throw FormattedSearchCancellation.cancelled
+            }
+
+            if try collectMatches(in: child, query: query, ancestors: &ancestors, matchesOrdered: &matchesOrdered, highlightIDs: &highlightIDs, expansionIDs: &expansionIDs, shouldCancel: shouldCancel) {
+                didMatchChild = true
+            }
+        }
+
+        if didMatchSelf {
+            matchesOrdered.append(snapshot.id)
+            highlightIDs.insert(snapshot.id)
+            expansionIDs.formUnion(ancestors)
+        }
+
+        if didMatchChild {
+            expansionIDs.insert(snapshot.id)
+        }
+
+        return didMatchSelf || didMatchChild
+    }
+
+    private static func normalizedValueString(for value: Any) -> String {
+        switch value {
+        case let stringValue as String:
+            return stringValue.lowercased()
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return number.boolValue ? "true" : "false"
+            } else {
+                return number.stringValue.lowercased()
+            }
+        case is NSNull:
+            return "null"
+        case let array as [Any]:
+            return array.map { normalizedValueString(for: $0) }.joined(separator: " ")
+        case let dict as [String: Any]:
+            return dict
+                .map { "\($0.key.lowercased()) \(normalizedValueString(for: $0.value))" }
+                .joined(separator: " ")
+        case let ordered as OrderedDictionary:
+            return ordered.orderedPairs
+                .map { "\($0.0.lowercased()) \(normalizedValueString(for: $0.1))" }
+                .joined(separator: " ")
+        default:
+            return String(describing: value).lowercased()
+        }
+    }
+
+    private struct JSONNodeSnapshot {
+        let id: UUID
+        let keyLowercased: String
+        let isRoot: Bool
+        let typeDescriptionLowercased: String
+        let normalizedValue: String?
+        let children: [JSONNodeSnapshot]
+
+        func matches(query: String) -> Bool {
+            if !isRoot && keyLowercased.contains(query) {
+                return true
+            }
+
+            if children.isEmpty {
+                if let normalizedValue, normalizedValue.contains(query) {
+                    return true
+                }
+            } else if typeDescriptionLowercased.contains(query) {
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private enum FormattedSearchCancellation: Error {
+        case cancelled
+    }
+
+    private struct FormattedSearchComputation {
+        let matchesOrdered: [UUID]
+        let highlightIDs: Set<UUID>
+        let expansionIDs: Set<UUID>
+    }
+
+    private func applyFormattedSearchIfNeeded() {
+        let trimmed = formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else {
+            formattedSearchWorkItem?.cancel()
+            formattedSearchWorkItem = nil
+            clearFormattedSearchResults()
+            return
+        }
+        updateFormattedSearch(with: formattedSearchQuery, skipDebounce: true)
+    }
 }
