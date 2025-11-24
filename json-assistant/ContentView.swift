@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -879,15 +878,15 @@ struct JSONOutputView: View {
             }
             TextField(
                 "Search formatted JSON",
-                text: $jsonViewModel.formattedSearchQuery
+                text: Binding(
+                    get: { jsonViewModel.formattedSearchQuery },
+                    set: { jsonViewModel.updateFormattedSearch(with: $0) }
+                )
             )
             .textFieldStyle(.plain)
             .font(.themedUI(size: 12))
             .foregroundColor(palette.text)
             .disableAutocorrection(true)
-            .onChange(of: jsonViewModel.formattedSearchQuery) { newValue in
-                jsonViewModel.updateFormattedSearch(with: newValue)
-            }
             if !jsonViewModel.formattedSearchQuery.isEmpty {
                 Button {
                     jsonViewModel.updateFormattedSearch(with: "")
