@@ -647,19 +647,54 @@ class JSONViewModel: ObservableObject {
     private var previousSearchQuery: String = ""
     private var previousSearchComputation: FormattedSearchComputation?
     private var nodeLookup: [UUID: JSONNode] = [:]
+    private var nodeLookupWorkItem: DispatchWorkItem?
 
     init() {
         loadSavedJSONs()
     }
 
     private func rebuildNodeLookup() {
-        nodeLookup.removeAll()
-        guard let rootNode else { return }
+        // Cancel any previous lookup rebuild work
+        nodeLookupWorkItem?.cancel()
+        nodeLookupWorkItem = nil
 
-        var stack: [JSONNode] = [rootNode]
-        while let node = stack.popLast() {
-            nodeLookup[node.id] = node
-            stack.append(contentsOf: node.children)
+        guard let rootNode else {
+            // Clear lookup if no root node
+            nodeLookup.removeAll()
+            return
+        }
+
+        // Build lookup on background thread
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+
+            var lookup: [UUID: JSONNode] = [:]
+            var stack: [JSONNode] = [rootNode]
+
+            while let node = stack.popLast() {
+                if let workItem = workItem, workItem.isCancelled {
+                    return
+                }
+                lookup[node.id] = node
+                stack.append(contentsOf: node.children)
+            }
+
+            // Apply lookup on main thread
+            DispatchQueue.main.async { [weak self, weak workItem] in
+                guard let self = self else { return }
+                guard let workItem = workItem, !workItem.isCancelled else { return }
+
+                self.nodeLookup = lookup
+                if self.nodeLookupWorkItem === workItem {
+                    self.nodeLookupWorkItem = nil
+                }
+            }
+        }
+
+        nodeLookupWorkItem = workItem
+        if let workItem = workItem {
+            DispatchQueue.global(qos: .utility).async(execute: workItem)
         }
     }
 
