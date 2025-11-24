@@ -1392,29 +1392,61 @@ class JSONViewModel: ObservableObject {
     }
 
     private static func normalizedValueString(for value: Any) -> String {
+        var result = ""
+        appendNormalizedValue(value, to: &result, maxDepth: 2)
+        return result
+    }
+
+    private static func appendNormalizedValue(_ value: Any, to result: inout String, maxDepth: Int) {
+        if maxDepth <= 0 {
+            return
+        }
+
         switch value {
         case let stringValue as String:
-            return stringValue.lowercased()
+            if !result.isEmpty { result.append(" ") }
+            result.append(stringValue.lowercased())
+
         case let number as NSNumber:
+            if !result.isEmpty { result.append(" ") }
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
-                return number.boolValue ? "true" : "false"
+                result.append(number.boolValue ? "true" : "false")
             } else {
-                return number.stringValue.lowercased()
+                result.append(number.stringValue.lowercased())
             }
+
         case is NSNull:
-            return "null"
+            if !result.isEmpty { result.append(" ") }
+            result.append("null")
+
         case let array as [Any]:
-            return array.map { normalizedValueString(for: $0) }.joined(separator: " ")
+            // Limit array processing to first 100 elements to avoid quadratic behavior
+            let limit = min(array.count, 100)
+            for item in array.prefix(limit) {
+                appendNormalizedValue(item, to: &result, maxDepth: maxDepth - 1)
+            }
+
         case let dict as [String: Any]:
-            return dict
-                .map { "\($0.key.lowercased()) \(normalizedValueString(for: $0.value))" }
-                .joined(separator: " ")
+            // Limit dict processing to first 50 keys
+            let limit = min(dict.count, 50)
+            for (key, value) in dict.prefix(limit) {
+                if !result.isEmpty { result.append(" ") }
+                result.append(key.lowercased())
+                appendNormalizedValue(value, to: &result, maxDepth: maxDepth - 1)
+            }
+
         case let ordered as OrderedDictionary:
-            return ordered.orderedPairs
-                .map { "\($0.0.lowercased()) \(normalizedValueString(for: $0.1))" }
-                .joined(separator: " ")
+            // Limit ordered dict processing to first 50 pairs
+            let limit = min(ordered.orderedPairs.count, 50)
+            for (key, value) in ordered.orderedPairs.prefix(limit) {
+                if !result.isEmpty { result.append(" ") }
+                result.append(key.lowercased())
+                appendNormalizedValue(value, to: &result, maxDepth: maxDepth - 1)
+            }
+
         default:
-            return String(describing: value).lowercased()
+            if !result.isEmpty { result.append(" ") }
+            result.append(String(describing: value).lowercased())
         }
     }
 
