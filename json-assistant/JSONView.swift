@@ -985,6 +985,38 @@ class JSONViewModel: ObservableObject {
         feedbackSubmissionIsError = false
     }
 
+    private func diagnoseFeedbackError(_ error: Error) -> String {
+        let nsError = error as NSError
+
+        // Check if it's a URLError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet:
+                return "No internet connection. Please check your network."
+            case NSURLErrorNetworkConnectionLost:
+                return "Network connection lost. Please try again."
+            case NSURLErrorDNSLookupFailed:
+                return "Unable to reach the feedback server (DNS lookup failed)."
+            case NSURLErrorCannotFindHost:
+                return "Unable to reach the feedback server (host not found)."
+            case NSURLErrorCannotConnectToHost:
+                return "Unable to connect to the feedback server. Please check your connection."
+            case NSURLErrorTimedOut:
+                return "Request timed out. Please check your connection and try again."
+            case NSURLErrorSecureConnectionFailed:
+                return "Secure connection failed. Your network may be blocking the request."
+            case NSURLErrorServerCertificateUntrusted:
+                return "Server certificate error. Please report this issue."
+            default:
+                // For other URL errors, provide the code and description
+                return "Network error (\(nsError.code)): \(error.localizedDescription)"
+            }
+        }
+
+        // For non-URL errors, just use the standard description
+        return "Failed to submit: \(error.localizedDescription)"
+    }
+
     func submitFeedback(message: String) {
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isSubmittingFeedback else { return }
@@ -1025,7 +1057,7 @@ class JSONViewModel: ObservableObject {
 
                 if let error = error {
                     self.feedbackSubmissionIsError = true
-                    self.feedbackSubmissionMessage = "Failed to submit: \(error.localizedDescription)"
+                    self.feedbackSubmissionMessage = self.diagnoseFeedbackError(error)
                     return
                 }
 
@@ -1037,9 +1069,9 @@ class JSONViewModel: ObservableObject {
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                     self.feedbackSubmissionIsError = true
                     if statusCode >= 0 {
-                        self.feedbackSubmissionMessage = "Unexpected response (\(statusCode))."
+                        self.feedbackSubmissionMessage = "Server error (\(statusCode)). Please try again later."
                     } else {
-                        self.feedbackSubmissionMessage = "Unexpected response."
+                        self.feedbackSubmissionMessage = "Unable to send feedback. Please check your connection."
                     }
                 }
             }

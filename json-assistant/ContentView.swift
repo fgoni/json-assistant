@@ -889,17 +889,9 @@ struct JSONOutputView: View {
             .onChange(of: localSearchText) { newValue in
                 jsonViewModel.updateFormattedSearch(with: newValue)
             }
-            .onReceive(
-                Just(jsonViewModel.formattedSearchQuery),
-                perform: { query in
-                    // Keep local state in sync if it diverges (e.g., from clear button)
-                    if localSearchText != query && query.isEmpty {
-                        localSearchText = query
-                    }
-                }
-            )
             if !jsonViewModel.formattedSearchQuery.isEmpty {
                 Button {
+                    localSearchText = ""
                     jsonViewModel.updateFormattedSearch(with: "")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -921,6 +913,12 @@ struct JSONOutputView: View {
                 .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
         )
         .frame(minWidth: 160)
+        .onChange(of: jsonViewModel.formattedSearchQuery) { newValue in
+            // If search was cleared externally, clear local text too
+            if newValue.isEmpty && !localSearchText.isEmpty {
+                localSearchText = ""
+            }
+        }
     }
 }
 
