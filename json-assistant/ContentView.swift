@@ -740,7 +740,6 @@ struct JSONInputView: View {
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     let palette: ThemePalette
-    @State private var localSearchText: String = ""
 
     var body: some View {
         VStack(spacing: 12) {
@@ -880,18 +879,17 @@ struct JSONOutputView: View {
             }
             TextField(
                 "Search formatted JSON",
-                text: $localSearchText
+                text: $jsonViewModel.formattedSearchQuery
             )
             .textFieldStyle(.plain)
             .font(.themedUI(size: 12))
             .foregroundColor(palette.text)
             .disableAutocorrection(true)
-            .onChange(of: localSearchText) { newValue in
+            .onChange(of: jsonViewModel.formattedSearchQuery) { newValue in
                 jsonViewModel.updateFormattedSearch(with: newValue)
             }
             if !jsonViewModel.formattedSearchQuery.isEmpty {
                 Button {
-                    localSearchText = ""
                     jsonViewModel.updateFormattedSearch(with: "")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -913,12 +911,6 @@ struct JSONOutputView: View {
                 .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
         )
         .frame(minWidth: 160)
-        .onChange(of: jsonViewModel.formattedSearchQuery) { newValue in
-            // If search was cleared externally, clear local text too
-            if newValue.isEmpty && !localSearchText.isEmpty {
-                localSearchText = ""
-            }
-        }
     }
 }
 
