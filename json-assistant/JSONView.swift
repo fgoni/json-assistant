@@ -957,9 +957,12 @@ class JSONViewModel: ObservableObject {
         feedbackSubmissionMessage = "Sending feedback..."
         isSubmittingFeedback = true
 
-        var components = URLComponents(string: "https://notifier.coffeedevs.com/api/event")
+        var components = URLComponents(string: "https://notifier.coffeedevs.com/api/events")
         components?.queryItems = [
-            URLQueryItem(name: "feedback", value: trimmedMessage)
+            URLQueryItem(name: "project", value: "json_assistant"),
+            URLQueryItem(name: "message", value: trimmedMessage),
+            URLQueryItem(name: "status", value: "success"),
+            URLQueryItem(name: "event_type", value: "Feedback")
         ]
 
         guard let url = components?.url else {
