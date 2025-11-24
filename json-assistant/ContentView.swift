@@ -739,6 +739,8 @@ struct JSONInputView: View {
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     let palette: ThemePalette
+    @State private var debouncedSearchText: String = ""
+    @State private var searchDebounceTimer: Timer?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -880,7 +882,15 @@ struct JSONOutputView: View {
                 "Search formatted JSON",
                 text: Binding(
                     get: { jsonViewModel.formattedSearchQuery },
-                    set: { jsonViewModel.updateFormattedSearch(with: $0) }
+                    set: { newValue in
+                        jsonViewModel.formattedSearchQuery = newValue
+
+                        // Debounce: only call updateFormattedSearch after 200ms of no typing
+                        searchDebounceTimer?.invalidate()
+                        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { _ in
+                            jsonViewModel.updateFormattedSearch(with: newValue, skipDebounce: true)
+                        }
+                    }
                 )
             )
             .textFieldStyle(.plain)
