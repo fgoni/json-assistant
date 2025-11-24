@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -739,6 +740,7 @@ struct JSONInputView: View {
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     let palette: ThemePalette
+    @State private var localSearchText: String = ""
 
     var body: some View {
         VStack(spacing: 12) {
@@ -878,15 +880,24 @@ struct JSONOutputView: View {
             }
             TextField(
                 "Search formatted JSON",
-                text: Binding(
-                    get: { jsonViewModel.formattedSearchQuery },
-                    set: { jsonViewModel.updateFormattedSearch(with: $0) }
-                )
+                text: $localSearchText
             )
             .textFieldStyle(.plain)
             .font(.themedUI(size: 12))
             .foregroundColor(palette.text)
             .disableAutocorrection(true)
+            .onChange(of: localSearchText) { newValue in
+                jsonViewModel.updateFormattedSearch(with: newValue)
+            }
+            .onReceive(
+                Just(jsonViewModel.formattedSearchQuery),
+                perform: { query in
+                    // Keep local state in sync if it diverges (e.g., from clear button)
+                    if localSearchText != query && query.isEmpty {
+                        localSearchText = query
+                    }
+                }
+            )
             if !jsonViewModel.formattedSearchQuery.isEmpty {
                 Button {
                     jsonViewModel.updateFormattedSearch(with: "")
