@@ -644,6 +644,8 @@ class JSONViewModel: ObservableObject {
     private var formattedSearchSnapshot: JSONNodeSnapshot?
     @Published private(set) var isFormattedSearchSnapshotLoading: Bool = false
     private var formattedSearchSnapshotWorkItem: DispatchWorkItem?
+    private var previousSearchQuery: String = ""
+    private var previousSearchComputation: FormattedSearchComputation?
     private var nodeLookup: [UUID: JSONNode] = [:]
 
     init() {
@@ -670,6 +672,8 @@ class JSONViewModel: ObservableObject {
         formattedSearchSnapshotWorkItem?.cancel()
         formattedSearchSnapshotWorkItem = nil
         isFormattedSearchSnapshotLoading = false
+        previousSearchQuery = ""
+        previousSearchComputation = nil
         formattedSearchMatches = []
         formattedSearchMatchOrder = []
         formattedSearchFocusedID = nil
@@ -1158,17 +1162,36 @@ class JSONViewModel: ObservableObject {
         let rootID = snapshot.id
         let loweredQuery = query.lowercased()
 
+        // Check if we can do incremental search
+        let canUseIncremental = !previousSearchQuery.isEmpty &&
+                                loweredQuery.count > previousSearchQuery.count &&
+                                loweredQuery.hasPrefix(previousSearchQuery) &&
+                                previousSearchComputation != nil
+
         weak var weakSelf = self
         var computeItem: DispatchWorkItem?
         computeItem = DispatchWorkItem {
             guard let computeItem else { return }
 
             do {
-                let computation = try Self.computeFormattedSearchComputation(
-                    snapshot: snapshot,
-                    query: loweredQuery,
-                    shouldCancel: { computeItem.isCancelled }
-                )
+                let computation: FormattedSearchComputation
+
+                if canUseIncremental, let prevComputation = self.previousSearchComputation {
+                    // Incremental search: filter previous results
+                    computation = try Self.filterSearchComputation(
+                        prevComputation,
+                        snapshot: snapshot,
+                        newQuery: loweredQuery,
+                        shouldCancel: { computeItem.isCancelled }
+                    )
+                } else {
+                    // Full search
+                    computation = try Self.computeFormattedSearchComputation(
+                        snapshot: snapshot,
+                        query: loweredQuery,
+                        shouldCancel: { computeItem.isCancelled }
+                    )
+                }
 
                 if computeItem.isCancelled {
                     return
@@ -1180,6 +1203,8 @@ class JSONViewModel: ObservableObject {
                     guard strongSelf.formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == loweredQuery else { return }
                     guard let currentRoot = strongSelf.rootNode, currentRoot.id == rootID else { return }
 
+                    strongSelf.previousSearchQuery = loweredQuery
+                    strongSelf.previousSearchComputation = computation
                     strongSelf.applyFormattedSearchComputation(computation, rootNode: currentRoot)
                     if strongSelf.formattedSearchComputationItem === computeItem {
                         strongSelf.formattedSearchComputationItem = nil
@@ -1354,6 +1379,86 @@ class JSONViewModel: ObservableObject {
         }
 
         return FormattedSearchComputation(matchesOrdered: matchesOrdered, highlightIDs: highlightIDs, expansionIDs: expansionIDs)
+    }
+
+    private static func filterSearchComputation(
+        _ previousComputation: FormattedSearchComputation,
+        snapshot: JSONNodeSnapshot,
+        newQuery: String,
+        shouldCancel: () -> Bool
+    ) throws -> FormattedSearchComputation {
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        var filteredMatches: [UUID] = []
+        var filteredHighlights: Set<UUID> = []
+        var expansionIDs: Set<UUID> = []
+
+        // Re-match only the previously matched nodes against the new query
+        for matchedID in previousComputation.matchesOrdered {
+            if shouldCancel() {
+                throw FormattedSearchCancellation.cancelled
+            }
+
+            // Find the node with this ID in the snapshot
+            if let matchedNode = findNodeInSnapshot(snapshot, withID: matchedID),
+               matchedNode.matches(query: newQuery) {
+                filteredMatches.append(matchedID)
+                filteredHighlights.insert(matchedID)
+
+                // Add ancestors for expansion
+                var ancestorIDs: [UUID] = []
+                collectAncestors(matchedNode, in: snapshot, ancestors: &ancestorIDs)
+                expansionIDs.formUnion(ancestorIDs)
+            }
+        }
+
+        return FormattedSearchComputation(
+            matchesOrdered: filteredMatches,
+            highlightIDs: filteredHighlights,
+            expansionIDs: expansionIDs
+        )
+    }
+
+    private static func findNodeInSnapshot(_ snapshot: JSONNodeSnapshot, withID targetID: UUID) -> JSONNodeSnapshot? {
+        if snapshot.id == targetID {
+            return snapshot
+        }
+
+        for child in snapshot.children {
+            if let found = findNodeInSnapshot(child, withID: targetID) {
+                return found
+            }
+        }
+
+        return nil
+    }
+
+    private static func collectAncestors(_ snapshot: JSONNodeSnapshot, in root: JSONNodeSnapshot, ancestors: inout [UUID]) {
+        // Build ancestry chain from root to current node
+        var current = snapshot
+        var ancestryChain: [UUID] = []
+
+        func findAncestorPath(_ node: JSONNodeSnapshot, _ target: UUID, _ path: inout [UUID]) -> Bool {
+            path.append(node.id)
+
+            if node.id == target {
+                return true
+            }
+
+            for child in node.children {
+                if findAncestorPath(child, target, &path) {
+                    return true
+                }
+            }
+
+            path.removeLast()
+            return false
+        }
+
+        _ = findAncestorPath(root, snapshot.id, &ancestryChain)
+        ancestors = ancestryChain
     }
 
     @discardableResult
