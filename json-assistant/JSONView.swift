@@ -1308,9 +1308,8 @@ class JSONViewModel: ObservableObject {
     }
 
     private func applyFormattedSearchComputation(_ computation: FormattedSearchComputation, rootNode: JSONNode) {
-        formattedSearchMatches = computation.highlightIDs
-        formattedSearchMatchOrder = computation.matchesOrdered
-
+        // Batch view updates by setting published properties together
+        // This reduces the number of view re-renders from multiple to just one
         let targetIndex: Int?
         if let currentID = formattedSearchFocusedID,
            let currentIndex = computation.matchesOrdered.firstIndex(of: currentID) {
@@ -1319,18 +1318,29 @@ class JSONViewModel: ObservableObject {
             targetIndex = computation.matchesOrdered.isEmpty ? nil : 0
         }
 
-        updateFocusedMatch(to: targetIndex)
+        // Expand nodes first (without triggering view updates yet)
+        expandNodesWithoutPublishing(with: computation.expansionIDs)
 
-        if !computation.expansionIDs.isEmpty {
-            expandNodes(with: computation.expansionIDs)
-        }
+        // Now publish all changes together, triggering a single view update cycle
+        formattedSearchMatches = computation.highlightIDs
+        formattedSearchMatchOrder = computation.matchesOrdered
+        updateFocusedMatch(to: targetIndex)
     }
 
-    private func expandNodes(with expansionIDs: Set<UUID>) {
+    private func expandNodesWithoutPublishing(with expansionIDs: Set<UUID>) {
         guard !expansionIDs.isEmpty else { return }
 
+        // Batch expansion updates by setting all nodes before triggering publishing
+        var nodesToExpand: [JSONNode] = []
         for id in expansionIDs {
-            nodeLookup[id]?.isExpanded = true
+            if let node = nodeLookup[id], !node.isExpanded {
+                nodesToExpand.append(node)
+            }
+        }
+
+        // Set all expansions in a batch to reduce update notifications
+        for node in nodesToExpand {
+            node.isExpanded = true
         }
     }
 
