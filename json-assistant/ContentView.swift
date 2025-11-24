@@ -867,9 +867,15 @@ struct JSONOutputView: View {
 
     private var formattedSearchTextField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(palette.muted)
+            if jsonViewModel.isFormattedSearchSnapshotLoading {
+                ProgressView()
+                    .scaleEffect(0.75, anchor: .center)
+                    .frame(width: 12, height: 12)
+            } else {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(palette.muted)
+            }
             TextField(
                 "Search formatted JSON",
                 text: Binding(

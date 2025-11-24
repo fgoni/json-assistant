@@ -642,6 +642,8 @@ class JSONViewModel: ObservableObject {
     private var formattedSearchComputationItem: DispatchWorkItem?
     private let formattedSearchDebounceInterval: TimeInterval = 0.3
     private var formattedSearchSnapshot: JSONNodeSnapshot?
+    @Published private(set) var isFormattedSearchSnapshotLoading: Bool = false
+    private var formattedSearchSnapshotWorkItem: DispatchWorkItem?
     private var nodeLookup: [UUID: JSONNode] = [:]
 
     init() {
@@ -665,6 +667,9 @@ class JSONViewModel: ObservableObject {
         formattedSearchWorkItem = nil
         formattedSearchComputationItem?.cancel()
         formattedSearchComputationItem = nil
+        formattedSearchSnapshotWorkItem?.cancel()
+        formattedSearchSnapshotWorkItem = nil
+        isFormattedSearchSnapshotLoading = false
         formattedSearchMatches = []
         formattedSearchMatchOrder = []
         formattedSearchFocusedID = nil
@@ -753,9 +758,7 @@ class JSONViewModel: ObservableObject {
                     self.setEditorText(prettyString)
                 }
                 self.rootNode = JSONNode(key: rootLabel, value: parsedValue, isRoot: true)
-                if let rootNode = self.rootNode {
-                    self.formattedSearchSnapshot = Self.makeSnapshot(from: rootNode)
-                }
+                self.formattedSearchSnapshot = nil
                 self.errorMessage = nil
                 self.persistParsedJSONIfNeeded(originalJSON: jsonString, autoExpand: autoExpand)
                 self.applyFormattedSearchIfNeeded()
@@ -1038,8 +1041,10 @@ class JSONViewModel: ObservableObject {
                 return
             }
 
+            // If snapshot doesn't exist or is stale, create it asynchronously
             if self.formattedSearchSnapshot == nil || self.formattedSearchSnapshot?.id != rootNode.id {
-                self.formattedSearchSnapshot = Self.makeSnapshot(from: rootNode)
+                self.createSnapshotAndSearch(rootNode: rootNode, query: currentTrimmed)
+                return
             }
 
             guard let snapshot = self.formattedSearchSnapshot else {
@@ -1105,6 +1110,91 @@ class JSONViewModel: ObservableObject {
             deadline: .now() + formattedSearchDebounceInterval,
             execute: workItem
         )
+    }
+
+    private func createSnapshotAndSearch(rootNode: JSONNode, query: String) {
+        // Cancel any previous snapshot creation work
+        formattedSearchSnapshotWorkItem?.cancel()
+
+        // Show loading indicator
+        isFormattedSearchSnapshotLoading = true
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+
+            // Create snapshot on background thread
+            let snapshot = Self.makeSnapshot(from: rootNode)
+
+            guard let workItem = workItem, !workItem.isCancelled else {
+                return
+            }
+
+            // Apply snapshot and perform search on main thread
+            DispatchQueue.main.async { [weak self, weak workItem] in
+                guard let self = self else { return }
+                guard let workItem = workItem, !workItem.isCancelled else { return }
+
+                self.formattedSearchSnapshot = snapshot
+                self.isFormattedSearchSnapshotLoading = false
+
+                // Now perform the search with the newly created snapshot
+                self.performFormattedSearchWithSnapshot(query: query)
+            }
+        }
+
+        formattedSearchSnapshotWorkItem = workItem
+        if let workItem = workItem {
+            DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
+        }
+    }
+
+    private func performFormattedSearchWithSnapshot(query: String) {
+        guard let snapshot = self.formattedSearchSnapshot else {
+            self.clearFormattedSearchResults()
+            return
+        }
+
+        let rootID = snapshot.id
+        let loweredQuery = query.lowercased()
+
+        weak var weakSelf = self
+        var computeItem: DispatchWorkItem?
+        computeItem = DispatchWorkItem {
+            guard let computeItem else { return }
+
+            do {
+                let computation = try Self.computeFormattedSearchComputation(
+                    snapshot: snapshot,
+                    query: loweredQuery,
+                    shouldCancel: { computeItem.isCancelled }
+                )
+
+                if computeItem.isCancelled {
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    guard let strongSelf = weakSelf else { return }
+                    guard !computeItem.isCancelled else { return }
+                    guard strongSelf.formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == loweredQuery else { return }
+                    guard let currentRoot = strongSelf.rootNode, currentRoot.id == rootID else { return }
+
+                    strongSelf.applyFormattedSearchComputation(computation, rootNode: currentRoot)
+                    if strongSelf.formattedSearchComputationItem === computeItem {
+                        strongSelf.formattedSearchComputationItem = nil
+                    }
+                }
+            } catch FormattedSearchCancellation.cancelled {
+                return
+            } catch {
+                return
+            }
+        }
+
+        guard let computeItem else { return }
+        self.formattedSearchComputationItem = computeItem
+        DispatchQueue.global(qos: .userInitiated).async(execute: computeItem)
     }
 
     func focusNextFormattedMatch() {
