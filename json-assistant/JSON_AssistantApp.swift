@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct JSON_AssistantApp: App {
     @StateObject private var viewModel = JSONViewModel()
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView(jsonViewModel: viewModel)

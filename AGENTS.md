@@ -15,7 +15,8 @@ Follow Xcode’s default 4-space indentation and let the editor’s “Re-Indent
 Unit coverage relies on `XCTest` in `JSON AssistantTests/`; UI flows use `XCUITest` inside `JSON AssistantUITests/`. Name tests as `test<Scenario>` (e.g., `testBeautifyValidInput`), and prefer focused helpers over long fixtures. Aim to accompany every new user-facing behavior with at least one assertion-based test, and mirror crash fixes with regression cases. Execute `xcodebuild … test` locally before pushing; capture any flaky UI behaviors in the PR description.
 
 ## Commit & Pull Request Guidelines
-Commits should adopt the short, imperative voice already seen in `Initial Commit` and `v2` (e.g., `Add collapse-all toggle`). Keep changes logically scoped and include relevant paths in the body when touching multiple areas. Pull requests need a concise summary of intent, reproduction steps for bug fixes, linked issue numbers if applicable, and screenshots or screen recordings whenever UI updates affect layout. Confirm tests pass and note any intentionally skipped suites.
+Commits should follow Conventional Commits style: `<type>(<scope>): <subject>`, e.g., `feat(parser): add support for nested arrays`. Use `fix` for bug fixes, `docs` for documentation changes, `style` for formatting, `refactor` for code restructuring, and `test` for test-related updates. Each PR must link to an issue or feature request, include a summary of changes, and pass all CI checks before merging. Squash commits when merging to maintain a clean history.
+Use https://www.conventionalcommits.org/en/v1.0.0/ for reference.
 
 ## Configuration Tips
 `buildServer.json` drives Build Server Protocol clients—update the `scheme` or workspace path if the project structure moves. When adding SwiftPM dependencies, let Xcode regenerate `Package.resolved` and verify the file remains in sync across branches to avoid merge drift.
