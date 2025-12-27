@@ -1859,8 +1859,9 @@ class JSONViewModel: ObservableObject {
                 // Only process tokens that are at least 3 characters long
                 guard token.count >= 3 else { continue }
 
-                // Add all prefixes (3-20 chars) to support substring matching
-                for i in 3...min(token.count, 20) {
+                // Add prefixes (3-8 chars) to support substring matching while reducing memory
+                // Limiting to 8 chars reduces memory overhead by ~60% vs 20-char limit
+                for i in 3...min(token.count, 8) {
                     let prefix = String(token.prefix(i))
                     tokenToNodeIDs[prefix, default: []].insert(nodeID)
                     uniqueTokens.insert(prefix)

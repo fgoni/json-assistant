@@ -68,7 +68,8 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
 
-            // Debounce syntax highlighting
+            // Debounce syntax highlighting - increased to 400ms for better typing responsiveness
+            // This reduces unnecessary highlight calculations when user is actively typing
             highlightWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 DispatchQueue.main.async {
@@ -76,7 +77,7 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
                 }
             }
             highlightWorkItem = workItem
-            highlightQueue.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+            highlightQueue.asyncAfter(deadline: .now() + 0.4, execute: workItem)
         }
 
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {

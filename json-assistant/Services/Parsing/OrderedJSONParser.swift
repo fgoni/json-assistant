@@ -180,17 +180,12 @@ struct OrderedJSONParser {
             throw OrderedJSONParserError.invalidNumber(numberString, position)
         }
 
-        let wrapped = "[\(numberString)]"
-        guard
-            let data = wrapped.data(using: .utf8),
-            let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [Any],
-            let value = parsed.first
-        else {
+        guard let doubleValue = Double(numberString) else {
             throw OrderedJSONParserError.invalidNumber(numberString, position)
         }
 
         index = tempIndex
-        return value
+        return NSNumber(value: doubleValue)
     }
 
     private mutating func expect(_ character: Character) throws {
