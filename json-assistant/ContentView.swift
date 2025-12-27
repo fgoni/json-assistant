@@ -293,11 +293,20 @@ struct SidebarView: View {
                 .frame(width: 88, height: 88)
                 .padding(.top, 12)
 
-            Text("JSON Assistant")
-                .font(.themedUI(size: 13))
-                .fontWeight(.semibold)
-                .foregroundColor(palette.text)
-                .padding(.bottom, 8)
+            VStack(spacing: 4) {
+                Text("JSON Assistant")
+                    .font(.themedUI(size: 13))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                    Text("v\(version) (\(build))")
+                        .font(.themedUI(size: 10))
+                        .foregroundColor(palette.muted.opacity(0.7))
+                }
+            }
+            .padding(.bottom, 8)
 
             searchField
 
@@ -402,6 +411,14 @@ struct SidebarView: View {
                         .foregroundColor(jsonViewModel.feedbackSubmissionIsError ? palette.boolFalse : palette.muted)
                         .frame(maxWidth: .infinity)
                 }
+
+                Link(destination: URL(string: "https://facundogoni.com.ar")!) {
+                    Text("Built with ❤️ by facundogoni.com.ar")
+                        .font(.themedUI(size: 10))
+                        .foregroundColor(palette.muted.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
@@ -739,8 +756,9 @@ struct JSONInputView: View {
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     let palette: ThemePalette
-    @State private var debouncedSearchText: String = ""
+    @State private var localSearchText: String = ""
     @State private var searchDebounceTimer: Timer?
+    @State private var lastSelectedJSONID: UUID?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -786,6 +804,35 @@ struct JSONOutputView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .shift])
+            }
+            .onChange(of: jsonViewModel.selectedJSONID) { newSelectedID in
+                // Save current search state for previous JSON
+                if let lastID = lastSelectedJSONID {
+                    jsonViewModel.saveSearchState(for: lastID, query: localSearchText)
+                }
+
+                // Update tracking
+                lastSelectedJSONID = newSelectedID
+
+                // Cancel any pending search
+                searchDebounceTimer?.invalidate()
+                searchDebounceTimer = nil
+
+                // Clear the search immediately (both UI and viewModel)
+                localSearchText = ""
+                jsonViewModel.updateFormattedSearch(with: "")
+
+                // Restore or set search state for new JSON
+                if let newID = newSelectedID {
+                    if let savedSearch = jsonViewModel.getSearchState(for: newID) {
+                        // Restore previous search for this JSON after a brief delay
+                        // to ensure snapshot is created from the new JSON
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            localSearchText = savedSearch
+                            jsonViewModel.updateFormattedSearch(with: savedSearch, skipDebounce: true)
+                        }
+                    }
+                }
             }
 
             if let rootNode = jsonViewModel.rootNode {
@@ -881,9 +928,9 @@ struct JSONOutputView: View {
             TextField(
                 "Search formatted JSON",
                 text: Binding(
-                    get: { jsonViewModel.formattedSearchQuery },
+                    get: { localSearchText },
                     set: { newValue in
-                        jsonViewModel.formattedSearchQuery = newValue
+                        localSearchText = newValue
 
                         // Debounce: only call updateFormattedSearch after 200ms of no typing
                         searchDebounceTimer?.invalidate()
@@ -897,8 +944,9 @@ struct JSONOutputView: View {
             .font(.themedUI(size: 12))
             .foregroundColor(palette.text)
             .disableAutocorrection(true)
-            if !jsonViewModel.formattedSearchQuery.isEmpty {
+            if !localSearchText.isEmpty {
                 Button {
+                    localSearchText = ""
                     jsonViewModel.updateFormattedSearch(with: "")
                 } label: {
                     Image(systemName: "xmark.circle.fill")

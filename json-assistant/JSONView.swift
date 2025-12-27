@@ -467,10 +467,11 @@ enum ValueType {
 }
 
 struct CollapsibleJSONView: View {
-    @ObservedObject var node: JSONNode
+    let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
     let depth: Int
+    @State private var visibleChildrenCount: Int = 50
 
     init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0) {
         self.node = node
@@ -484,27 +485,60 @@ struct CollapsibleJSONView: View {
             JSONNodeView(node: node, viewModel: viewModel, palette: palette)
 
             // Only render children when expanded, and limit depth to prevent excessive nesting
-            if node.isExpanded && !node.children.isEmpty && depth < 50 {
-                ForEach(node.children) { child in
-                    CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
-                        .padding(.leading, 16)
-                        .id(child.id)
+            if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
+                // Use LazyVStack for efficient rendering of large lists
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    let childrenToRender = Array(node.children.prefix(visibleChildrenCount))
+
+                    ForEach(childrenToRender) { child in
+                        CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
+                            .padding(.leading, 16)
+                            .id(child.id)
+                    }
+
+                    // Show "Load More" button if there are hidden children
+                    if node.children.count > visibleChildrenCount {
+                        loadMoreButton
+                    }
                 }
             }
         }
         .id(node.id)
     }
+
+    @ViewBuilder
+    private var loadMoreButton: some View {
+        Button {
+            // Increase visible count by 50
+            visibleChildrenCount = min(visibleChildrenCount + 50, node.children.count)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(palette.accent)
+                Text("Show \(min(50, node.children.count - visibleChildrenCount)) more...")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(palette.accent)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 
 struct JSONNodeView: View {
-    @ObservedObject var node: JSONNode
+    let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
-    
+
     var body: some View {
         let isHighlighted = viewModel.formattedSearchMatches.contains(node.id)
         let isFocused = viewModel.formattedSearchFocusedID == node.id
+        let isNodeExpanded = viewModel.isExpanded(node.id)
 
         let (keyColor, punctuationColor, keyWeight): (Color, Color, Font.Weight) = {
             if isFocused {
@@ -525,7 +559,7 @@ struct JSONNodeView: View {
         let hasBorder = isFocused || isHighlighted
 
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: node.isExpanded ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
+            Image(systemName: isNodeExpanded ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
                 .foregroundColor(palette.muted)
                 .opacity(node.children.isEmpty ? 0 : 1)
                 .onTapGesture {
@@ -646,8 +680,12 @@ class JSONViewModel: ObservableObject {
     private var formattedSearchSnapshotWorkItem: DispatchWorkItem?
     private var previousSearchQuery: String = ""
     private var previousSearchComputation: FormattedSearchComputation?
+    private var searchStateByRootID: [UUID: String] = [:]
     private var nodeLookup: [UUID: JSONNode] = [:]
     private var nodeLookupWorkItem: DispatchWorkItem?
+    @Published private(set) var expansionState: [UUID: Bool] = [:]
+    private var searchIndexBuildWorkItem: DispatchWorkItem?
+    private var isSearchIndexBuilding = false
 
     init() {
         loadSavedJSONs()
@@ -698,7 +736,26 @@ class JSONViewModel: ObservableObject {
         }
     }
 
-    
+    // MARK: - Expansion State Management
+
+    func isExpanded(_ nodeID: UUID) -> Bool {
+        expansionState[nodeID] ?? false
+    }
+
+    func toggleExpansion(for nodeID: UUID) {
+        expansionState[nodeID, default: false].toggle()
+    }
+
+    func setExpanded(_ expanded: Bool, for nodeID: UUID) {
+        expansionState[nodeID] = expanded
+    }
+
+    private func expandNodesWithoutPublishing(with nodeIDs: Set<UUID>) {
+        for nodeID in nodeIDs {
+            expansionState[nodeID] = true
+        }
+    }
+
     private func clearFormattedSearchResults() {
         formattedSearchWorkItem?.cancel()
         formattedSearchWorkItem = nil
@@ -809,7 +866,9 @@ class JSONViewModel: ObservableObject {
                         self.setExpansionState(for: self.rootNode, isExpanded: true)
                     } else {
                         // For large JSON, only expand the root
-                        self.rootNode?.isExpanded = true
+                        if let rootNode = self.rootNode {
+                            self.setExpanded(true, for: rootNode.id)
+                        }
                     }
                 }
             }
@@ -876,6 +935,7 @@ class JSONViewModel: ObservableObject {
             selectedJSONID = nil
         }
         searchTokenCache.removeValue(forKey: json.id)
+        searchStateByRootID.removeValue(forKey: json.id)
     }
     
     func updateJSONName(_ json: ParsedJSON, newName: String) {
@@ -910,13 +970,8 @@ class JSONViewModel: ObservableObject {
     
     private func setExpansionState(for node: JSONNode?, isExpanded: Bool) {
         guard let node = node else { return }
-        node.isExpanded = isExpanded
+        setExpanded(isExpanded, for: node.id)
         node.children.forEach { setExpansionState(for: $0, isExpanded: isExpanded) }
-    }
-
-    func toggleExpansion(for nodeID: UUID) {
-        guard let node = nodeLookup[nodeID] else { return }
-        node.isExpanded.toggle()
     }
     
     func beautifyJSON() {
@@ -1210,6 +1265,9 @@ class JSONViewModel: ObservableObject {
                 self.formattedSearchSnapshot = snapshot
                 self.isFormattedSearchSnapshotLoading = false
 
+                // Build search index in background (deferred to avoid blocking JSON loading)
+                self.buildSearchIndexInBackground(for: snapshot)
+
                 // Now perform the search with the newly created snapshot
                 self.performFormattedSearchWithSnapshot(query: query)
             }
@@ -1314,6 +1372,14 @@ class JSONViewModel: ObservableObject {
         updateFocusedMatch(to: previousIndex)
     }
 
+    func saveSearchState(for rootID: UUID, query: String) {
+        searchStateByRootID[rootID] = query
+    }
+
+    func getSearchState(for rootID: UUID) -> String? {
+        return searchStateByRootID[rootID]
+    }
+
     private func matchesSearch(_ parsed: ParsedJSON, query: String) -> Bool {
         if parsed.name.lowercased().contains(query) { return true }
 
@@ -1395,24 +1461,48 @@ class JSONViewModel: ObservableObject {
         updateFocusedMatch(to: targetIndex)
     }
 
-    private func expandNodesWithoutPublishing(with expansionIDs: Set<UUID>) {
-        guard !expansionIDs.isEmpty else { return }
+    private static func makeSnapshot(from node: JSONNode) -> JSONNodeSnapshot {
+        // Create snapshot tree immediately without building index (for fast JSON loading)
+        let snapshot = makeSnapshotTree(from: node)
+        // Index will be built in background by buildSearchIndexInBackground()
+        return snapshot
+    }
 
-        // Batch expansion updates by setting all nodes before triggering publishing
-        var nodesToExpand: [JSONNode] = []
-        for id in expansionIDs {
-            if let node = nodeLookup[id], !node.isExpanded {
-                nodesToExpand.append(node)
+    private func buildSearchIndexInBackground(for snapshot: JSONNodeSnapshot) {
+        // Cancel any previous index build work
+        searchIndexBuildWorkItem?.cancel()
+        isSearchIndexBuilding = false
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard let workItem = workItem, !workItem.isCancelled else { return }
+
+            // Build the search index on background thread
+            let builtIndex = Self.buildSearchIndex(for: snapshot)
+
+            guard !workItem.isCancelled else { return }
+
+            // Update the snapshot's index in-place on main thread to avoid replacing snapshot
+            DispatchQueue.main.async { [weak self, weak workItem] in
+                guard let self = self else { return }
+                guard let workItem = workItem, !workItem.isCancelled else { return }
+
+                // Only update if this is still the same snapshot (prevent race condition)
+                if self.formattedSearchSnapshot?.id == snapshot.id {
+                    self.formattedSearchSnapshot?.searchIndex = builtIndex
+                }
             }
         }
 
-        // Set all expansions in a batch to reduce update notifications
-        for node in nodesToExpand {
-            node.isExpanded = true
+        searchIndexBuildWorkItem = workItem
+        if let workItem = workItem {
+            isSearchIndexBuilding = true
+            DispatchQueue.global(qos: .utility).async(execute: workItem)
         }
     }
 
-    private static func makeSnapshot(from node: JSONNode) -> JSONNodeSnapshot {
+    private static func makeSnapshotTree(from node: JSONNode) -> JSONNodeSnapshot {
         let normalizedValue: String?
         if node.children.isEmpty {
             normalizedValue = normalizedValueString(for: node.value)
@@ -1420,7 +1510,7 @@ class JSONViewModel: ObservableObject {
             normalizedValue = nil
         }
 
-        let children = node.children.map { makeSnapshot(from: $0) }
+        let children = node.children.map { makeSnapshotTree(from: $0) }
 
         return JSONNodeSnapshot(
             id: node.id,
@@ -1428,8 +1518,56 @@ class JSONViewModel: ObservableObject {
             isRoot: node.isRoot,
             typeDescriptionLowercased: node.typeDescription.lowercased(),
             normalizedValue: normalizedValue,
-            children: children
+            children: children,
+            searchIndex: SearchIndex()  // Start with empty index
         )
+    }
+
+    private static func buildSearchIndex(for snapshot: JSONNodeSnapshot) -> SearchIndex {
+        var index = SearchIndex()
+        collectTokensForIndex(&index, in: snapshot)
+        return index
+    }
+
+    private static func collectTokensForIndex(_ index: inout SearchIndex, in snapshot: JSONNodeSnapshot) {
+        // Collect tokens from this node's searchable fields
+        var tokens: [String] = []
+
+        // Add key tokens (if not root)
+        if !snapshot.isRoot && !snapshot.keyLowercased.isEmpty {
+            tokens.append(snapshot.keyLowercased)
+        }
+
+        // Add type description tokens
+        if !snapshot.typeDescriptionLowercased.isEmpty {
+            tokens.append(snapshot.typeDescriptionLowercased)
+        }
+
+        // Add normalized value tokens (for leaf nodes)
+        if let normalizedValue = snapshot.normalizedValue, !normalizedValue.isEmpty {
+            // Split by spaces to get individual tokens
+            let valueTokens = normalizedValue.split(separator: " ").map(String.init)
+            tokens.append(contentsOf: valueTokens)
+        }
+
+        // Add all tokens to index for this node
+        if !tokens.isEmpty {
+            index.addTokensForNode(snapshot.id, tokens: tokens)
+        }
+
+        // Recursively collect tokens from children
+        for child in snapshot.children {
+            collectTokensForIndex(&index, in: child)
+        }
+    }
+
+    private func computeFormattedSearchComputationSafe(snapshot: JSONNodeSnapshot, query: String, shouldCancel: () -> Bool) throws -> FormattedSearchComputation {
+        // This is a wrapper that checks if the index is being built
+        if isSearchIndexBuilding {
+            // Index is being built, use tree traversal fallback
+            return try Self.computeWithTreeTraversal(snapshot: snapshot, query: query, shouldCancel: shouldCancel)
+        }
+        return try Self.computeFormattedSearchComputation(snapshot: snapshot, query: query, shouldCancel: shouldCancel)
     }
 
     private static func computeFormattedSearchComputation(snapshot: JSONNodeSnapshot, query: String, shouldCancel: () -> Bool) throws -> FormattedSearchComputation {
@@ -1437,6 +1575,68 @@ class JSONViewModel: ObservableObject {
             throw FormattedSearchCancellation.cancelled
         }
 
+        // Check if search index is ready (has been built in background)
+        let indexIsReady = !snapshot.searchIndex.isEmpty()
+
+        // Use index-based search if ready, otherwise fall back to tree traversal
+        if indexIsReady {
+            return try computeWithIndex(snapshot: snapshot, query: query, shouldCancel: shouldCancel)
+        } else {
+            return try computeWithTreeTraversal(snapshot: snapshot, query: query, shouldCancel: shouldCancel)
+        }
+    }
+
+    private static func computeWithIndex(snapshot: JSONNodeSnapshot, query: String, shouldCancel: () -> Bool) throws -> FormattedSearchComputation {
+        var matchingNodeIDs: Set<UUID> = []
+
+        // Get all tokens that contain the query
+        let matchingTokens = snapshot.searchIndex.getMatchingTokens(for: query)
+
+        // Collect all node IDs that have matching tokens
+        for token in matchingTokens {
+            if shouldCancel() {
+                throw FormattedSearchCancellation.cancelled
+            }
+            matchingNodeIDs.formUnion(snapshot.searchIndex.getMatchingNodeIDs(for: token))
+        }
+
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        // Now build the result with proper ordering and expansion info
+        var matchesOrdered: [UUID] = []
+        var highlightIDs: Set<UUID> = []
+        var expansionIDs: Set<UUID> = []
+
+        // Build a map of node ID to node for quick ancestor lookup
+        var nodeMap: [UUID: JSONNodeSnapshot] = [:]
+        buildNodeMap(snapshot, into: &nodeMap)
+
+        // Process each matching node in DFS order
+        var dfsOrder: [UUID] = []
+        buildDFSOrder(snapshot, into: &dfsOrder)
+
+        for nodeID in dfsOrder {
+            if matchingNodeIDs.contains(nodeID) {
+                matchesOrdered.append(nodeID)
+                highlightIDs.insert(nodeID)
+
+                // Find and expand all ancestors
+                let ancestors = findAncestors(nodeID, in: snapshot, nodeMap: nodeMap)
+                expansionIDs.formUnion(ancestors)
+            }
+        }
+
+        if shouldCancel() {
+            throw FormattedSearchCancellation.cancelled
+        }
+
+        return FormattedSearchComputation(matchesOrdered: matchesOrdered, highlightIDs: highlightIDs, expansionIDs: expansionIDs)
+    }
+
+    private static func computeWithTreeTraversal(snapshot: JSONNodeSnapshot, query: String, shouldCancel: () -> Bool) throws -> FormattedSearchComputation {
+        // Fallback to tree traversal when index is not yet ready
         var matchesOrdered: [UUID] = []
         var highlightIDs: Set<UUID> = []
         var expansionIDs: Set<UUID> = []
@@ -1459,44 +1659,53 @@ class JSONViewModel: ObservableObject {
         return FormattedSearchComputation(matchesOrdered: matchesOrdered, highlightIDs: highlightIDs, expansionIDs: expansionIDs)
     }
 
+    /// Build a map of all node IDs to their snapshots for quick lookup
+    private static func buildNodeMap(_ snapshot: JSONNodeSnapshot, into map: inout [UUID: JSONNodeSnapshot]) {
+        map[snapshot.id] = snapshot
+        for child in snapshot.children {
+            buildNodeMap(child, into: &map)
+        }
+    }
+
+    /// Build DFS order of all node IDs for consistent result ordering
+    private static func buildDFSOrder(_ snapshot: JSONNodeSnapshot, into order: inout [UUID]) {
+        order.append(snapshot.id)
+        for child in snapshot.children {
+            buildDFSOrder(child, into: &order)
+        }
+    }
+
+    /// Find all ancestors of a node (for auto-expansion during search)
+    private static func findAncestors(_ nodeID: UUID, in snapshot: JSONNodeSnapshot, nodeMap: [UUID: JSONNodeSnapshot]) -> Set<UUID> {
+        var ancestors: Set<UUID> = []
+
+        func collectAncestors(_ current: JSONNodeSnapshot) -> Bool {
+            for child in current.children {
+                if child.id == nodeID {
+                    ancestors.insert(current.id)
+                    return true
+                }
+                if collectAncestors(child) {
+                    ancestors.insert(current.id)
+                    return true
+                }
+            }
+            return false
+        }
+
+        _ = collectAncestors(snapshot)
+        return ancestors
+    }
+
     private static func filterSearchComputation(
         _ previousComputation: FormattedSearchComputation,
         snapshot: JSONNodeSnapshot,
         newQuery: String,
         shouldCancel: () -> Bool
     ) throws -> FormattedSearchComputation {
-        if shouldCancel() {
-            throw FormattedSearchCancellation.cancelled
-        }
-
-        var filteredMatches: [UUID] = []
-        var filteredHighlights: Set<UUID> = []
-        var expansionIDs: Set<UUID> = []
-
-        // Re-match only the previously matched nodes against the new query
-        for matchedID in previousComputation.matchesOrdered {
-            if shouldCancel() {
-                throw FormattedSearchCancellation.cancelled
-            }
-
-            // Find the node with this ID in the snapshot
-            if let matchedNode = findNodeInSnapshot(snapshot, withID: matchedID),
-               matchedNode.matches(query: newQuery) {
-                filteredMatches.append(matchedID)
-                filteredHighlights.insert(matchedID)
-
-                // Add ancestors for expansion
-                var ancestorIDs: [UUID] = []
-                collectAncestors(matchedNode, in: snapshot, ancestors: &ancestorIDs)
-                expansionIDs.formUnion(ancestorIDs)
-            }
-        }
-
-        return FormattedSearchComputation(
-            matchesOrdered: filteredMatches,
-            highlightIDs: filteredHighlights,
-            expansionIDs: expansionIDs
-        )
+        // Since index-based search is now O(1), just use the regular search instead of incremental filtering
+        // This is simpler and not significantly slower than the old incremental approach
+        return try computeFormattedSearchComputation(snapshot: snapshot, query: newQuery, shouldCancel: shouldCancel)
     }
 
     private static func findNodeInSnapshot(_ snapshot: JSONNodeSnapshot, withID targetID: UUID) -> JSONNodeSnapshot? {
@@ -1576,8 +1785,9 @@ class JSONViewModel: ObservableObject {
 
     private static func normalizedValueString(for value: Any) -> String {
         var result = ""
+        result.reserveCapacity(1024)  // Pre-allocate buffer capacity
         appendNormalizedValue(value, to: &result, maxDepth: 2)
-        return result
+        return result.lowercased()  // Single lowercase operation at the end
     }
 
     private static func appendNormalizedValue(_ value: Any, to result: inout String, maxDepth: Int) {
@@ -1588,14 +1798,14 @@ class JSONViewModel: ObservableObject {
         switch value {
         case let stringValue as String:
             if !result.isEmpty { result.append(" ") }
-            result.append(stringValue.lowercased())
+            result.append(stringValue)  // No lowercase here
 
         case let number as NSNumber:
             if !result.isEmpty { result.append(" ") }
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
                 result.append(number.boolValue ? "true" : "false")
             } else {
-                result.append(number.stringValue.lowercased())
+                result.append(number.stringValue)  // No lowercase here
             }
 
         case is NSNull:
@@ -1614,7 +1824,7 @@ class JSONViewModel: ObservableObject {
             let limit = min(dict.count, 50)
             for (key, value) in dict.prefix(limit) {
                 if !result.isEmpty { result.append(" ") }
-                result.append(key.lowercased())
+                result.append(key)  // No lowercase here
                 appendNormalizedValue(value, to: &result, maxDepth: maxDepth - 1)
             }
 
@@ -1623,13 +1833,56 @@ class JSONViewModel: ObservableObject {
             let limit = min(ordered.orderedPairs.count, 50)
             for (key, value) in ordered.orderedPairs.prefix(limit) {
                 if !result.isEmpty { result.append(" ") }
-                result.append(key.lowercased())
+                result.append(key)  // No lowercase here
                 appendNormalizedValue(value, to: &result, maxDepth: maxDepth - 1)
             }
 
         default:
             if !result.isEmpty { result.append(" ") }
-            result.append(String(describing: value).lowercased())
+            result.append(String(describing: value))  // No lowercase here
+        }
+    }
+
+    // MARK: - Search Index for Fast Token Lookup
+    private struct SearchIndex {
+        /// Maps search tokens (prefixes) to node IDs
+        /// Example: "user" → [nodeID1, nodeID2, nodeID3]
+        private var tokenToNodeIDs: [String: Set<UUID>] = [:]
+
+        /// Maps node IDs to their search tokens for quick lookup of tokens that match
+        private var nodeIDToTokens: [UUID: Set<String>] = [:]
+
+        mutating func addTokensForNode(_ nodeID: UUID, tokens: [String]) {
+            var uniqueTokens: Set<String> = []
+
+            for token in tokens {
+                // Only process tokens that are at least 3 characters long
+                guard token.count >= 3 else { continue }
+
+                // Add all prefixes (3-20 chars) to support substring matching
+                for i in 3...min(token.count, 20) {
+                    let prefix = String(token.prefix(i))
+                    tokenToNodeIDs[prefix, default: []].insert(nodeID)
+                    uniqueTokens.insert(prefix)
+                }
+            }
+
+            nodeIDToTokens[nodeID] = uniqueTokens
+        }
+
+        /// Get all node IDs that match a query token using prefix matching
+        func getMatchingNodeIDs(for query: String) -> Set<UUID> {
+            return tokenToNodeIDs[query] ?? []
+        }
+
+        /// Get all tokens that contain the query as a substring
+        func getMatchingTokens(for query: String) -> [String] {
+            return tokenToNodeIDs.keys.filter { $0.contains(query) }
+        }
+
+        /// Check if the index has been built (has data)
+        func isEmpty() -> Bool {
+            return tokenToNodeIDs.isEmpty
         }
     }
 
@@ -1640,17 +1893,18 @@ class JSONViewModel: ObservableObject {
         let typeDescriptionLowercased: String
         let normalizedValue: String?
         let children: [JSONNodeSnapshot]
+        var searchIndex: SearchIndex
 
         func matches(query: String) -> Bool {
-            if !isRoot && keyLowercased.contains(query) {
+            if !isRoot && keyLowercased.range(of: query, options: .literal) != nil {
                 return true
             }
 
             if children.isEmpty {
-                if let normalizedValue, normalizedValue.contains(query) {
+                if let normalizedValue, normalizedValue.range(of: query, options: .literal) != nil {
                     return true
                 }
-            } else if typeDescriptionLowercased.contains(query) {
+            } else if typeDescriptionLowercased.range(of: query, options: .literal) != nil {
                 return true
             }
 
