@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "52B773052C73C613007F17CC"
-               BuildableName = "JSON Assistant.app"
-               BlueprintName = "JSON Assistant"
-               ReferencedContainer = "container:JSON Assistant.xcodeproj">
+               BuildableName = "json-assistant.app"
+               BlueprintName = "json-assistant"
+               ReferencedContainer = "container:json-assistant.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "52B773182C73C615007F17CC"
-               BuildableName = "JSON AssistantTests.xctest"
-               BlueprintName = "JSON AssistantTests"
-               ReferencedContainer = "container:JSON Assistant.xcodeproj">
+               BuildableName = "json-assistant-tests.xctest"
+               BlueprintName = "json-assistant-tests"
+               ReferencedContainer = "container:json-assistant.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -47,9 +47,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "52B773222C73C615007F17CC"
-               BuildableName = "JSON AssistantUITests.xctest"
-               BlueprintName = "JSON AssistantUITests"
-               ReferencedContainer = "container:JSON Assistant.xcodeproj">
+               BuildableName = "json-assistant-ui-tests.xctest"
+               BlueprintName = "json-assistant-ui-tests"
+               ReferencedContainer = "container:json-assistant.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -69,9 +69,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "52B773052C73C613007F17CC"
-            BuildableName = "JSON Assistant.app"
-            BlueprintName = "JSON Assistant"
-            ReferencedContainer = "container:JSON Assistant.xcodeproj">
+            BuildableName = "json-assistant.app"
+            BlueprintName = "json-assistant"
+            ReferencedContainer = "container:json-assistant.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -86,9 +86,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "52B773052C73C613007F17CC"
-            BuildableName = "JSON Assistant.app"
-            BlueprintName = "JSON Assistant"
-            ReferencedContainer = "container:JSON Assistant.xcodeproj">
+            BuildableName = "json-assistant.app"
+            BlueprintName = "json-assistant"
+            ReferencedContainer = "container:json-assistant.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

@@ -49,6 +49,20 @@ struct JSON_AssistantApp: App {
                     viewModel.selectLatest(4)
                 }
                 .keyboardShortcut("4", modifiers: .command)
+
+                Divider()
+
+                Button("Find Next") {
+                    viewModel.focusNextFormattedMatch()
+                }
+                .keyboardShortcut("g", modifiers: .command)
+                .disabled(viewModel.formattedSearchMatchOrder.isEmpty)
+
+                Button("Find Previous") {
+                    viewModel.focusPreviousFormattedMatch()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(viewModel.formattedSearchMatchOrder.isEmpty)
             }
         }
     }
