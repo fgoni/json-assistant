@@ -304,7 +304,7 @@ struct SidebarView: View {
                    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                     Text("v\(version) (\(build))")
                         .font(.themedUI(size: 10))
-                        .foregroundColor(palette.muted)
+                        .foregroundColor(palette.text.opacity(0.5))
                 }
             }
             .padding(.bottom, 8)
@@ -319,7 +319,7 @@ struct SidebarView: View {
                         .foregroundColor(palette.punctuation)
                     Text("No saved responses yet")
                         .font(.themedUI(size: 12))
-                        .foregroundColor(palette.muted)
+                        .foregroundColor(palette.text)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .background(palette.surface)
@@ -330,11 +330,11 @@ struct SidebarView: View {
                         .foregroundColor(palette.punctuation)
                     Text("No matches found")
                         .font(.themedUI(size: 12))
-                        .foregroundColor(palette.muted)
+                        .foregroundColor(palette.text)
                     if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                         Text("Tried \"\(searchText)\" in names and JSON paths.")
                             .font(.themedUI(size: 11))
-                            .foregroundColor(palette.muted.opacity(0.8))
+                            .foregroundColor(palette.text.opacity(0.7))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -347,7 +347,7 @@ struct SidebarView: View {
                 Text(section.title)
                     .font(.themedUI(size: 11))
                     .fontWeight(.semibold)
-                    .foregroundColor(palette.text.opacity(0.7))
+                    .foregroundColor(palette.text)
                     .padding(.horizontal, 6)
                     .padding(.top, 8)
                                 VStack(spacing: 8) {
@@ -395,7 +395,7 @@ struct SidebarView: View {
                             .font(.themedUI(size: 12))
                             .fontWeight(.semibold)
                     }
-                    .foregroundColor(palette.surface)
+                    .foregroundColor(palette.buttonText)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
                     .background(palette.accent)
@@ -441,7 +441,7 @@ struct SidebarView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(palette.muted)
+                .foregroundColor(palette.text)
             TextField("Search saved JSON", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.themedUI(size: 12))
@@ -457,7 +457,7 @@ struct SidebarView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(palette.text.opacity(0.6))
+                        .foregroundColor(palette.text)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
@@ -686,10 +686,10 @@ struct JSONInputView: View {
                         Text("New")
                             .font(.themedUI(size: 12))
                             .fontWeight(.semibold)
-                            .foregroundColor(palette.accent)
+                            .foregroundColor(palette.buttonText)
                         Text("⌘N")
                             .font(.themedUI(size: 11))
-                            .foregroundColor(palette.accent)
+                            .foregroundColor(palette.buttonText)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -783,12 +783,12 @@ struct JSONOutputView: View {
                             Text("Collapse All")
                                 .font(.themedUI(size: 12))
                                 .fontWeight(.semibold)
-                                .foregroundColor(palette.accent)
+                                .foregroundColor(palette.buttonText)
                         }
                         if !jsonViewModel.isExpandingOrCollapsing {
                             Text("⌘⇧-")
                                 .font(.themedUI(size: 11))
-                                .foregroundColor(palette.accent)
+                                .foregroundColor(palette.buttonText)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -809,12 +809,12 @@ struct JSONOutputView: View {
                             Text("Expand All")
                                 .font(.themedUI(size: 12))
                                 .fontWeight(.semibold)
-                                .foregroundColor(palette.accent)
+                                .foregroundColor(palette.buttonText)
                         }
                         if !jsonViewModel.isExpandingOrCollapsing {
                             Text("⌘⇧=")
                                 .font(.themedUI(size: 11))
-                                .foregroundColor(palette.accent)
+                                .foregroundColor(palette.buttonText)
                         }
                     }
                     .padding(.horizontal, 6)
