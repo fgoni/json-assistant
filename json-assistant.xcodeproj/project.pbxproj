@@ -451,7 +451,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
 				PRODUCT_DISPLAY_NAME = "JSON Assistant";
@@ -481,7 +481,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
 				PRODUCT_DISPLAY_NAME = "JSON Assistant";
@@ -500,7 +500,7 @@
 				CURRENT_PROJECT_VERSION = 13;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -519,7 +519,7 @@
 				CURRENT_PROJECT_VERSION = 13;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -536,7 +536,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 13;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -553,7 +553,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 13;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
