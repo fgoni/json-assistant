@@ -304,7 +304,7 @@ struct SidebarView: View {
                    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                     Text("v\(version) (\(build))")
                         .font(.themedUI(size: 10))
-                        .foregroundColor(palette.muted.opacity(0.7))
+                        .foregroundColor(palette.muted)
                 }
             }
             .padding(.bottom, 8)
@@ -347,7 +347,7 @@ struct SidebarView: View {
                 Text(section.title)
                     .font(.themedUI(size: 11))
                     .fontWeight(.semibold)
-                    .foregroundColor(palette.muted)
+                    .foregroundColor(palette.text.opacity(0.7))
                     .padding(.horizontal, 6)
                     .padding(.top, 8)
                                 VStack(spacing: 8) {
@@ -447,6 +447,8 @@ struct SidebarView: View {
                 .font(.themedUI(size: 12))
                 .foregroundColor(palette.text)
                 .disableAutocorrection(true)
+                // Improve placeholder text visibility in dark mode
+                .tint(palette.accent)
             if !searchText.isEmpty {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -455,7 +457,7 @@ struct SidebarView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(palette.muted.opacity(0.7))
+                        .foregroundColor(palette.text.opacity(0.6))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
@@ -675,7 +677,7 @@ struct JSONInputView: View {
                 Text("Request JSON")
                     .font(.themedUI(size: 12))
                     .fontWeight(.semibold)
-                    .foregroundColor(palette.muted)
+                    .foregroundColor(palette.text)
                 Spacer()
                 Button {
                     jsonViewModel.startNewEntry()
@@ -687,7 +689,7 @@ struct JSONInputView: View {
                             .foregroundColor(palette.accent)
                         Text("⌘N")
                             .font(.themedUI(size: 11))
-                            .foregroundColor(palette.accent.opacity(0.75))
+                            .foregroundColor(palette.accent)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -774,36 +776,52 @@ struct JSONOutputView: View {
                     jsonViewModel.collapseAll()
                 } label: {
                     HStack(spacing: 6) {
-                        Text("Collapse All")
-                            .font(.themedUI(size: 12))
-                            .fontWeight(.semibold)
-                            .foregroundColor(palette.accent)
-                        Text("⌘⇧-")
-                            .font(.themedUI(size: 11))
-                            .foregroundColor(palette.accent.opacity(0.75))
+                        if jsonViewModel.isExpandingOrCollapsing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Collapse All")
+                                .font(.themedUI(size: 12))
+                                .fontWeight(.semibold)
+                                .foregroundColor(palette.accent)
+                        }
+                        if !jsonViewModel.isExpandingOrCollapsing {
+                            Text("⌘⇧-")
+                                .font(.themedUI(size: 11))
+                                .foregroundColor(palette.accent)
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("-"), modifiers: [.command, .shift])
 
                 Button {
                     jsonViewModel.expandAll()
                 } label: {
                     HStack(spacing: 6) {
-                        Text("Expand All")
-                            .font(.themedUI(size: 12))
-                            .fontWeight(.semibold)
-                            .foregroundColor(palette.accent)
-                        Text("⌘⇧=")
-                            .font(.themedUI(size: 11))
-                            .foregroundColor(palette.accent.opacity(0.75))
+                        if jsonViewModel.isExpandingOrCollapsing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Expand All")
+                                .font(.themedUI(size: 12))
+                                .fontWeight(.semibold)
+                                .foregroundColor(palette.accent)
+                        }
+                        if !jsonViewModel.isExpandingOrCollapsing {
+                            Text("⌘⇧=")
+                                .font(.themedUI(size: 11))
+                                .foregroundColor(palette.accent)
+                        }
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 6)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .shift])
             }
             .onChange(of: jsonViewModel.selectedJSONID) { newSelectedID in

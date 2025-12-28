@@ -684,8 +684,11 @@ class JSONViewModel: ObservableObject {
     private var nodeLookup: [UUID: JSONNode] = [:]
     private var nodeLookupWorkItem: DispatchWorkItem?
     @Published private(set) var expansionState: [UUID: Bool] = [:]
+    @Published private(set) var isExpandingOrCollapsing: Bool = false
     private var searchIndexBuildWorkItem: DispatchWorkItem?
     private var isSearchIndexBuilding = false
+    private var expansionWorkItem: DispatchWorkItem?
+    private let expansionQueue = DispatchQueue(label: "com.json-assistant.expansion", qos: .userInitiated)
 
     init() {
         loadSavedJSONs()
@@ -961,11 +964,34 @@ class JSONViewModel: ObservableObject {
     }
 
     func expandAll() {
-        setExpansionState(for: rootNode, isExpanded: true)
+        performExpansionOperation(isExpanded: true)
     }
-    
+
     func collapseAll() {
-        setExpansionState(for: rootNode, isExpanded: false)
+        performExpansionOperation(isExpanded: false)
+    }
+
+    private func performExpansionOperation(isExpanded: Bool) {
+        // Cancel any previous expansion operation
+        expansionWorkItem?.cancel()
+
+        // Set loading state on main thread
+        isExpandingOrCollapsing = true
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+
+            // Do the heavy work on background thread
+            self.setExpansionState(for: self.rootNode, isExpanded: isExpanded)
+
+            // Update loading state on main thread
+            DispatchQueue.main.async {
+                self.isExpandingOrCollapsing = false
+            }
+        }
+
+        expansionWorkItem = workItem
+        expansionQueue.async(execute: workItem)
     }
     
     private func setExpansionState(for node: JSONNode?, isExpanded: Bool) {
