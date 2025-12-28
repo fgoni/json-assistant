@@ -102,7 +102,7 @@ extension Font {
         }
         return Font.system(size: size, weight: .regular, design: .monospaced)
     }
-    
+
     static func themedUI(size: CGFloat = 13) -> Font {
         let preferredFonts = ["Inter", "SF Pro Text"]
         for name in preferredFonts {
@@ -111,5 +111,47 @@ extension Font {
             }
         }
         return Font.system(size: size, weight: .regular, design: .default)
+    }
+}
+
+// MARK: - Theme Settings
+enum ThemeMode: String, CaseIterable, Identifiable {
+    case system = "System"
+    case light = "Light"
+    case dark = "Dark"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
+class ThemeSettings: ObservableObject {
+    @Published var selectedTheme: ThemeMode {
+        didSet {
+            UserDefaults.standard.set(selectedTheme.rawValue, forKey: "themeMode")
+        }
+    }
+
+    init() {
+        let savedTheme = UserDefaults.standard.string(forKey: "themeMode") ?? ThemeMode.system.rawValue
+        self.selectedTheme = ThemeMode(rawValue: savedTheme) ?? .system
+    }
+
+    /// Get the effective color scheme based on selected theme and system preference
+    func getColorScheme(systemScheme: ColorScheme) -> ColorScheme? {
+        switch selectedTheme {
+        case .system:
+            return nil  // Let the system decide
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
     }
 }
