@@ -26,6 +26,11 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isContinuousSpellCheckingEnabled = false
 
+        // Style scrollers to be visible in all color schemes
+        scrollView.scrollerStyle = .overlay
+        scrollView.verticalScroller?.appearance = NSAppearance(named: .vibrantDark)
+        scrollView.horizontalScroller?.appearance = NSAppearance(named: .vibrantDark)
+
         context.coordinator.textView = textView
         context.coordinator.updateSyntaxHighlighting()
 
@@ -400,7 +405,7 @@ struct SidebarView: View {
                             .font(.themedUI(size: 12))
                             .fontWeight(.semibold)
                     }
-                    .foregroundColor(palette.buttonText)
+                    .foregroundColor(palette.accentButtonText)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
                     .background(palette.accent)
@@ -691,15 +696,17 @@ struct JSONInputView: View {
                         Text("New")
                             .font(.themedUI(size: 12))
                             .fontWeight(.semibold)
-                            .foregroundColor(palette.buttonText)
+                            .foregroundColor(palette.accentButtonText)
                         Text("⌘N")
                             .font(.themedUI(size: 11))
-                            .foregroundColor(palette.buttonText)
+                            .foregroundColor(palette.accentButtonText)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
+                    .background(palette.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
+                .buttonStyle(.plain)
                 .keyboardShortcut("n", modifiers: [.command])
             }
 
@@ -781,25 +788,23 @@ struct JSONOutputView: View {
                     jsonViewModel.collapseAll()
                 } label: {
                     HStack(spacing: 6) {
-                        if jsonViewModel.isExpandingOrCollapsing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Text("Collapse All")
-                                .font(.themedUI(size: 12))
-                                .fontWeight(.semibold)
-                                .foregroundColor(palette.buttonText)
-                        }
+                        Text(jsonViewModel.isExpandingOrCollapsing ? "Collapsing..." : "Collapse All")
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.accentButtonText)
                         if !jsonViewModel.isExpandingOrCollapsing {
                             Text("⌘⇧-")
                                 .font(.themedUI(size: 11))
-                                .foregroundColor(palette.buttonText)
+                                .foregroundColor(palette.accentButtonText)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
+                    .background(palette.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .opacity(jsonViewModel.isExpandingOrCollapsing ? 0.6 : 1.0)
                 }
+                .buttonStyle(.plain)
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("-"), modifiers: [.command, .shift])
 
@@ -807,25 +812,23 @@ struct JSONOutputView: View {
                     jsonViewModel.expandAll()
                 } label: {
                     HStack(spacing: 6) {
-                        if jsonViewModel.isExpandingOrCollapsing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Text("Expand All")
-                                .font(.themedUI(size: 12))
-                                .fontWeight(.semibold)
-                                .foregroundColor(palette.buttonText)
-                        }
+                        Text(jsonViewModel.isExpandingOrCollapsing ? "Expanding..." : "Expand All")
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.accentButtonText)
                         if !jsonViewModel.isExpandingOrCollapsing {
                             Text("⌘⇧=")
                                 .font(.themedUI(size: 11))
-                                .foregroundColor(palette.buttonText)
+                                .foregroundColor(palette.accentButtonText)
                         }
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 6)
+                    .background(palette.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .opacity(jsonViewModel.isExpandingOrCollapsing ? 0.6 : 1.0)
                 }
+                .buttonStyle(.plain)
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .shift])
             }
@@ -1124,7 +1127,7 @@ struct SettingsView: View {
                     .padding(.vertical, 6)
                     .padding(.horizontal, 16)
                     .background(palette.accent)
-                    .foregroundColor(palette.buttonText)
+                    .foregroundColor(palette.accentButtonText)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .buttonStyle(.plain)
                 }

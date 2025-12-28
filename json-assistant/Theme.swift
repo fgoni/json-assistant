@@ -41,6 +41,7 @@ struct ThemePalette {
     let muted: Color
     let placeholderText: Color  // Semantic color for input placeholders
     let buttonText: Color       // Semantic color for button text
+    let accentButtonText: Color // Semantic color for text on accent-colored buttons
     let key: Color
     let string: Color
     let number: Color
@@ -62,6 +63,7 @@ struct ThemePalette {
         muted: Color(hex: "#9CA3AF"),
         placeholderText: Color(hex: "#F3F4F6"),  // Very light gray, close to white for visibility
         buttonText: Color(hex: "#F3F4F6"),       // Same whiter color for buttons
+        accentButtonText: Color(hex: "#FFFFFF"), // White text for accent-colored buttons
         key: Color(hex: "#93C5FD"),
         string: Color(hex: "#86EFAC"),
         number: Color(hex: "#F59E0B"),
@@ -80,6 +82,7 @@ struct ThemePalette {
         muted: Color(hex: "#475569"),
         placeholderText: Color(hex: "#6B7280"),  // Medium gray for light mode placeholders
         buttonText: Color(hex: "#0F172A"),        // Dark text for light mode buttons
+        accentButtonText: Color(hex: "#FFFFFF"), // White text for accent-colored buttons
         key: Color(hex: "#1D4ED8"),
         string: Color(hex: "#B45309"),
         number: Color(hex: "#7C3AED"),
