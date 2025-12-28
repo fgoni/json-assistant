@@ -423,8 +423,8 @@ struct SidebarView: View {
                         .frame(maxWidth: .infinity)
                 }
 
-                Link(destination: URL(string: "https://facundogoni.com.ar")!) {
-                    Text("Built with ❤️ by facundogoni.com.ar")
+                Link(destination: URL(string: "https://coffeedevs.com")!) {
+                    Text("Built with ❤️ by coffeedevs.com")
                         .font(.themedUI(size: 10))
                         .foregroundColor(palette.muted.opacity(0.6))
                         .multilineTextAlignment(.center)

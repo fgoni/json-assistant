@@ -102,3 +102,5 @@ iOSInjectionProject/
 .derivedData/
 
 build_output/
+
+.env
