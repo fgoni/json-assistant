@@ -68,9 +68,18 @@ struct JSON_AssistantApp: App {
 
             CommandMenu("Settings") {
                 Button(action: {
-                    // Open the settings window
-                    if let settingsWindow = NSApplication.shared.windows.first(where: { $0.title == "Settings" }) {
-                        settingsWindow.makeKeyAndOrderFront(nil)
+                    // Try to find and show existing settings window
+                    if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "settings" }) {
+                        window.makeKeyAndOrderFront(nil)
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                    } else {
+                        // If window doesn't exist, trigger state change and wait for it to be created
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "settings" }) {
+                                window.makeKeyAndOrderFront(nil)
+                                NSApplication.shared.activate(ignoringOtherApps: true)
+                            }
+                        }
                     }
                 }) {
                     Text("Preferences...")
