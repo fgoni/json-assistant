@@ -454,6 +454,7 @@
 				MARKETING_VERSION = 1.2.6;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
+				PRODUCT_DISPLAY_NAME = "JSON Assistant";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -483,6 +484,7 @@
 				MARKETING_VERSION = 1.2.6;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
+				PRODUCT_DISPLAY_NAME = "JSON Assistant";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
