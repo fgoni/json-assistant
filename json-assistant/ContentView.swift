@@ -964,6 +964,7 @@ struct JSONOutputView: View {
             .textFieldStyle(.plain)
             .font(.themedUI(size: 12))
             .foregroundColor(palette.text)
+            .tint(palette.accent)
             .disableAutocorrection(true)
             if !localSearchText.isEmpty {
                 Button {
@@ -1201,6 +1202,7 @@ private struct SavedJSONRow: View {
                 .font(.themedUI(size: 12))
                 .fontWeight(.semibold)
                 .foregroundColor(palette.text)
+                .tint(palette.accent)
                 .lineLimit(1)
 
                 Spacer()
