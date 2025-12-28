@@ -8,6 +8,7 @@ struct JSON_AssistantApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(jsonViewModel: viewModel, themeSettings: themeSettings)
+                .environmentObject(themeSettings)
         }
 #if os(macOS)
         .windowStyle(.hiddenTitleBar)
@@ -68,28 +69,12 @@ struct JSON_AssistantApp: App {
 
             CommandMenu("Settings") {
                 Button(action: {
-                    // Try to find and show existing settings window
-                    if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "settings" }) {
-                        window.makeKeyAndOrderFront(nil)
-                        NSApplication.shared.activate(ignoringOtherApps: true)
-                    } else {
-                        // If window doesn't exist, trigger state change and wait for it to be created
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "settings" }) {
-                                window.makeKeyAndOrderFront(nil)
-                                NSApplication.shared.activate(ignoringOtherApps: true)
-                            }
-                        }
-                    }
+                    themeSettings.showSettingsPanel = true
                 }) {
                     Text("Preferences...")
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
-        }
-
-        Window("Settings", id: "settings") {
-            SettingsView(themeSettings: themeSettings)
         }
     }
 }

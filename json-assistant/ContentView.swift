@@ -277,6 +277,9 @@ struct ContentView: View {
             .navigationViewStyle(.automatic)
         }
         .accentColor(palette.accent)
+        .sheet(isPresented: $themeSettings.showSettingsPanel) {
+            SettingsView(themeSettings: themeSettings)
+        }
     }
 }
 

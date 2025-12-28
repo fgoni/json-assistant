@@ -137,6 +137,7 @@ class ThemeSettings: ObservableObject {
             UserDefaults.standard.set(selectedTheme.rawValue, forKey: "themeMode")
         }
     }
+    @Published var showSettingsPanel = false
 
     init() {
         let savedTheme = UserDefaults.standard.string(forKey: "themeMode") ?? ThemeMode.system.rawValue
