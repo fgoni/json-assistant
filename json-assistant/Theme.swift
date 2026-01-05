@@ -150,6 +150,8 @@ class ThemeSettings: ObservableObject {
     static let uiFontSizeDefaultsKey = "uiFontSize"
     static let requestJSONFontSizeDefaultsKey = "requestJSONFontSize"
     static let formattedJSONFontSizeDefaultsKey = "formattedJSONFontSize"
+    static let requestJSONWordWrapDefaultsKey = "requestJSONWordWrap"
+    static let formattedJSONWordWrapDefaultsKey = "formattedJSONWordWrap"
 
     @Published var selectedTheme: ThemeMode {
         didSet {
@@ -190,6 +192,18 @@ class ThemeSettings: ObservableObject {
         }
     }
 
+    @Published var requestJSONWordWrap: Bool {
+        didSet {
+            UserDefaults.standard.set(requestJSONWordWrap, forKey: Self.requestJSONWordWrapDefaultsKey)
+        }
+    }
+
+    @Published var formattedJSONWordWrap: Bool {
+        didSet {
+            UserDefaults.standard.set(formattedJSONWordWrap, forKey: Self.formattedJSONWordWrapDefaultsKey)
+        }
+    }
+
     @Published var showSettingsPanel = false
 
     init() {
@@ -204,6 +218,10 @@ class ThemeSettings: ObservableObject {
 
         let savedFormattedFontSize = UserDefaults.standard.double(forKey: Self.formattedJSONFontSizeDefaultsKey)
         self.formattedJSONFontSize = savedFormattedFontSize > 0 ? Self.clamp(savedFormattedFontSize) : Self.defaultFormattedJSONFontSize
+
+        // Initialize word-wrap settings (default to true for better UX)
+        self.requestJSONWordWrap = UserDefaults.standard.object(forKey: Self.requestJSONWordWrapDefaultsKey) as? Bool ?? true
+        self.formattedJSONWordWrap = UserDefaults.standard.object(forKey: Self.formattedJSONWordWrapDefaultsKey) as? Bool ?? true
     }
 
     func increaseRequestJSONFontSize() {

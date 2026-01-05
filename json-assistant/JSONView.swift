@@ -540,19 +540,25 @@ struct CollapsibleJSONView: View {
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
     let depth: Int
+    @ObservedObject var themeSettings: ThemeSettings
     @State private var visibleChildrenCount: Int = 30
     @State private var renderStartTime: Date?
 
-    init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0) {
+    init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0, themeSettings: ThemeSettings) {
         self.node = node
         self.viewModel = viewModel
         self.palette = palette
         self.depth = depth
+        self.themeSettings = themeSettings
+    }
+
+    private var wordWrap: Bool {
+        themeSettings.formattedJSONWordWrap
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            JSONNodeView(node: node, viewModel: viewModel, palette: palette)
+            JSONNodeView(node: node, viewModel: viewModel, palette: palette, wordWrap: wordWrap)
 
             // Only render children when expanded, and limit depth to prevent excessive nesting
             if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
@@ -565,7 +571,7 @@ struct CollapsibleJSONView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(childrenToRender) { child in
                         // Use offset instead of padding to avoid nested layout containers
-                        CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
+                        CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1, themeSettings: themeSettings)
                             .offset(x: 16)
                             .id(child.id)
                     }
@@ -607,6 +613,7 @@ struct JSONNodeView: View {
     let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
+    let wordWrap: Bool
     @State private var renderCount = 0
 
     var body: some View {
@@ -645,10 +652,12 @@ struct JSONNodeView: View {
                 Text(node.typeDescription)
                     .foregroundColor(isFocused ? palette.surface : palette.muted)
                     .fontWeight(isFocused ? .semibold : .regular)
+                    .lineLimit(wordWrap ? nil : 1)
             } else {
                 Text(node.key)
                     .foregroundColor(keyColor)
                     .fontWeight(keyWeight)
+                    .lineLimit(wordWrap ? nil : 1)
                 Text(":")
                     .foregroundColor(punctuationColor)
                     .fontWeight(keyWeight)
@@ -681,10 +690,12 @@ struct JSONNodeView: View {
             Text("Object")
                 .foregroundColor(palette.muted)
                 .textSelection(.enabled)
+                .lineLimit(wordWrap ? nil : 1)
         } else if node.value is [Any] {
             Text("Array")
                 .foregroundColor(palette.muted)
                 .textSelection(.enabled)
+                .lineLimit(wordWrap ? nil : 1)
         } else if let stringValue = node.value as? String {
             if let url = URL(string: stringValue),
                let scheme = url.scheme,
@@ -692,12 +703,14 @@ struct JSONNodeView: View {
                 Link(destination: url) {
                     Text(node.displayValue)
                         .foregroundColor(palette.accent)
+                        .lineLimit(wordWrap ? nil : 1)
                 }
                 .textSelection(.enabled)
             } else {
                 Text(node.displayValue)
                     .foregroundColor(palette.string)
                     .textSelection(.enabled)
+                    .lineLimit(wordWrap ? nil : 1)
             }
         } else if let number = node.value as? NSNumber {
             if number.isBool {
@@ -705,20 +718,24 @@ struct JSONNodeView: View {
                     .foregroundColor(number.boolValue ? palette.boolTrue : palette.boolFalse)
                     .fontWeight(.semibold)
                     .textSelection(.enabled)
+                    .lineLimit(wordWrap ? nil : 1)
             } else {
                 Text(node.displayValue)
                     .foregroundColor(palette.number)
                     .textSelection(.enabled)
+                    .lineLimit(wordWrap ? nil : 1)
             }
         } else if node.value is NSNull {
             Text(node.displayValue)
                 .foregroundColor(palette.null)
                 .italic()
                 .textSelection(.enabled)
+                .lineLimit(wordWrap ? nil : 1)
         } else {
             Text(node.displayValue)
                 .foregroundColor(palette.number)
                 .textSelection(.enabled)
+                .lineLimit(wordWrap ? nil : 1)
         }
     }
 }

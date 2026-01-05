@@ -11,6 +11,7 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
     @Binding var text: String
     let palette: ThemePalette
     let fontSize: CGFloat
+    let wordWrap: Bool
     let onPaste: (String) -> Void
 
 	    func makeNSView(context: Context) -> NSScrollView {
@@ -33,10 +34,20 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isContinuousSpellCheckingEnabled = false
 
-        // Style scrollers to be visible in all color schemes
+        // Configure word-wrap
+        textView.isHorizontallyResizable = !wordWrap
+        if wordWrap {
+            textView.textContainer?.widthTracksTextView = true
+        }
+
+        // Configure scrollers
         scrollView.scrollerStyle = .overlay
         scrollView.verticalScroller?.appearance = NSAppearance(named: .vibrantDark)
         scrollView.horizontalScroller?.appearance = NSAppearance(named: .vibrantDark)
+
+        // Show horizontal scroller when word-wrap is disabled
+        scrollView.hasHorizontalScroller = !wordWrap
+        scrollView.autohidesScrollers = true
 
         context.coordinator.textView = textView
         context.coordinator.updateSyntaxHighlighting()
@@ -52,6 +63,30 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         if textView.insertionPointColor != NSColor(palette.accent) {
             textView.insertionPointColor = NSColor(palette.accent)
         }
+
+        // Update word-wrap setting
+        let shouldUpdate = textView.isHorizontallyResizable == wordWrap  // Will be true if state needs to change
+        textView.isHorizontallyResizable = !wordWrap
+        if wordWrap {
+            textView.textContainer?.widthTracksTextView = true
+        } else {
+            textView.textContainer?.widthTracksTextView = false
+        }
+
+        // Update horizontal scroller visibility
+        scrollView.hasHorizontalScroller = !wordWrap
+
+        // Trigger layout update if word-wrap setting changed
+        if shouldUpdate {
+            // Defer layout updates to avoid reentrancy issues
+            DispatchQueue.main.async {
+                textView.textContainer?.size = NSZeroSize
+                textView.sizeToFit()
+                scrollView.needsLayout = true
+                scrollView.display()
+            }
+        }
+
 	        textView.selectedTextAttributes = [
 	            .backgroundColor: NSColor(palette.selection),
 	            .foregroundColor: NSColor.selectedTextColor
@@ -884,6 +919,7 @@ struct JSONInputView: View {
                 text: $jsonViewModel.inputJSON,
                 palette: palette,
                 fontSize: CGFloat(themeSettings.requestJSONFontSize),
+                wordWrap: themeSettings.requestJSONWordWrap,
                 onPaste: { pastedText in
                     jsonViewModel.inputJSON = pastedText
                     jsonViewModel.beautifyAndSaveJSON()
@@ -892,6 +928,9 @@ struct JSONInputView: View {
             .onChange(of: jsonViewModel.inputJSON) { newValue in
                 guard !jsonViewModel.isProgrammaticInputUpdate else { return }
                 jsonViewModel.parseJSON(newValue, autoExpand: false)
+            }
+            .onChange(of: themeSettings.requestJSONWordWrap) { _ in
+                // Trigger re-render when word-wrap setting changes
             }
             .padding(12)
             .background(palette.surface)
@@ -1050,12 +1089,12 @@ struct JSONOutputView: View {
                 )
             } else if let rootNode = jsonViewModel.rootNode {
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView([.vertical, .horizontal], showsIndicators: true) {
                         VStack(alignment: .leading, spacing: 8) {
-                            CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette)
+                            CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
                                 .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: themeSettings.formattedJSONWordWrap ? .infinity : nil, alignment: .leading)
                         .padding(12)
                     }
                     .onAppear {
@@ -1086,6 +1125,9 @@ struct JSONOutputView: View {
                     detail: jsonViewModel.errorMessage
                 )
             }
+        }
+        .onChange(of: themeSettings.formattedJSONWordWrap) { _ in
+            // Trigger re-render when word-wrap setting changes
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1349,6 +1391,36 @@ struct SettingsView: View {
                         )
                     }
 
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Text Display")
+                            .font(.themedUI(size: 13))
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.text)
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            wordWrapToggle(
+                                title: "Request JSON",
+                                value: $themeSettings.requestJSONWordWrap,
+                                description: "Wrap long lines in request view"
+                            )
+
+                            wordWrapToggle(
+                                title: "Formatted JSON",
+                                value: $themeSettings.formattedJSONWordWrap,
+                                description: "Wrap long lines in formatted view"
+                            )
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(palette.surface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+
                     Spacer()
                 }
                 .padding(12)
@@ -1396,6 +1468,8 @@ struct SettingsView: View {
                     Text(hint)
                         .font(.themedUI(size: 11))
                         .foregroundColor(palette.muted)
+                        .lineLimit(nil)
+                        .multilineTextAlignment(.leading)
                 }
             }
 
@@ -1444,6 +1518,39 @@ struct SettingsView: View {
 	                    .stroke(palette.punctuation.opacity(0.25), lineWidth: 1)
 	            )
 	        }
+	    }
+
+	    @ViewBuilder
+	    private func wordWrapToggle(title: String, value: Binding<Bool>, description: String) -> some View {
+	        HStack(spacing: 12) {
+	            VStack(alignment: .leading, spacing: 2) {
+	                Text(title)
+	                    .font(.themedUI(size: 12))
+	                    .fontWeight(.semibold)
+	                    .foregroundColor(palette.text)
+
+	                Text(description)
+	                    .font(.themedUI(size: 11))
+	                    .foregroundColor(palette.muted)
+	                    .lineLimit(nil)
+	                    .multilineTextAlignment(.leading)
+	            }
+
+	            Spacer()
+
+	            Toggle("", isOn: value)
+	                .labelsHidden()
+	        }
+	        .padding(.vertical, 8)
+	        .padding(.horizontal, 12)
+	        .background(
+	            RoundedRectangle(cornerRadius: 8)
+	                .fill(palette.background.opacity(0.45))
+	        )
+	        .overlay(
+	            RoundedRectangle(cornerRadius: 8)
+	                .stroke(palette.punctuation.opacity(0.25), lineWidth: 1)
+	        )
 	    }
 }
 
