@@ -386,8 +386,10 @@ enum OrderedJSONFormatter {
 }
 
 class JSONNode: Identifiable, ObservableObject {
-    private static let maxDepth = 100
+    private static let maxDepth = 50  // Reduced from 100
+    private static let maxNodes = 5000  // Hard limit on total nodes
     private static var nodeCount = 0
+    private static var seenValues = NSHashTable<AnyObject>(options: .weakMemory)
 
     let id = UUID()
     let key: String
@@ -408,7 +410,14 @@ class JSONNode: Identifiable, ObservableObject {
         // Debug logging for the first node (root)
         if isRoot {
             JSONNode.nodeCount = 1
+            JSONNode.seenValues.removeAllObjects()
             os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
+        }
+
+        // Emergency stop if we exceed max nodes (indicates a problem)
+        if JSONNode.nodeCount > Self.maxNodes {
+            os_log("JSONNode: CRITICAL - Max nodes exceeded (%d), aborting parse", log: OSLog.default, type: .error, JSONNode.nodeCount)
+            return
         }
 
         parseValue(value, currentDepth: depth)
@@ -421,25 +430,45 @@ class JSONNode: Identifiable, ObservableObject {
     private func parseValue(_ value: Any, currentDepth: Int) {
         // Prevent infinite recursion beyond max depth
         guard currentDepth < Self.maxDepth else {
+            os_log("JSONNode: Max depth (%d) reached", log: OSLog.default, type: .debug, Self.maxDepth)
+            return
+        }
+
+        // Emergency stop if we exceed max nodes
+        guard JSONNode.nodeCount <= Self.maxNodes else {
             return
         }
 
         switch value {
         case let dict as OrderedDictionary:
-            children = dict.orderedPairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+            let pairs = dict.orderedPairs
+            os_log("JSONNode: Parsing OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .debug, pairs.count, currentDepth)
+            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+
         case let dict as [String: Any]:
-            let ordered = OrderedDictionary()
-            for (key, value) in dict {
-                ordered[key] = value
+            os_log("JSONNode: Parsing [String: Any] with %d keys at depth %d", log: OSLog.default, type: .debug, dict.count, currentDepth)
+            // Check for circular reference
+            if dict.count > 100 {
+                os_log("JSONNode: Large dictionary (%d keys) at depth %d - potential circular structure", log: OSLog.default, type: .error, dict.count, currentDepth)
             }
-            children = ordered.orderedPairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+            let ordered = OrderedDictionary()
+            for (key, val) in dict {
+                ordered[key] = val
+            }
+            let pairs = ordered.orderedPairs
+            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+
         case let array as [Any]:
             // Limit array children to prevent massive expansion
-            let limitedArray = array.count > 1000 ? Array(array.prefix(1000)) : array
-            if array.count > 1000 {
-                os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, array.count)
+            let arrayCount = array.count
+            os_log("JSONNode: Parsing array with %d elements at depth %d", log: OSLog.default, type: .debug, arrayCount, currentDepth)
+
+            let limitedArray = arrayCount > 1000 ? Array(array.prefix(1000)) : array
+            if arrayCount > 1000 {
+                os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, arrayCount)
             }
             children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1) }
+
         default:
             break
         }
