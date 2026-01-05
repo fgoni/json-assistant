@@ -386,10 +386,11 @@ enum OrderedJSONFormatter {
 }
 
 class JSONNode: Identifiable, ObservableObject {
-    private static let maxDepth = 50  // Reduced from 100
-    private static let maxNodes = 5000  // Hard limit on total nodes
+    private static let maxDepth = 50
+    private static let maxNodes = 5000
     private static var nodeCount = 0
-    private static var seenValues = NSHashTable<AnyObject>(options: .weakMemory)
+    private static var parseStartTime: Date?
+    private static var valueAccessCount = 0
 
     let id = UUID()
     let key: String
@@ -407,14 +408,21 @@ class JSONNode: Identifiable, ObservableObject {
         self.depth = depth
         JSONNode.nodeCount += 1
 
-        // Debug logging for the first node (root)
         if isRoot {
             JSONNode.nodeCount = 1
-            JSONNode.seenValues.removeAllObjects()
+            JSONNode.valueAccessCount = 0
+            JSONNode.parseStartTime = Date()
+            os_log("JSONNode: ===== PARSE START =====", log: OSLog.default, type: .debug)
             os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
         }
 
-        // Emergency stop if we exceed max nodes (indicates a problem)
+        // Hardline check every 100 nodes
+        if JSONNode.nodeCount % 100 == 0 {
+            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
+            os_log("JSONNode: Checkpoint - %d nodes created in %.2f seconds (accesses: %d)",
+                   log: OSLog.default, type: .info, JSONNode.nodeCount, elapsed, JSONNode.valueAccessCount)
+        }
+
         if JSONNode.nodeCount > Self.maxNodes {
             os_log("JSONNode: CRITICAL - Max nodes exceeded (%d), aborting parse", log: OSLog.default, type: .error, JSONNode.nodeCount)
             return
@@ -423,7 +431,10 @@ class JSONNode: Identifiable, ObservableObject {
         parseValue(value, currentDepth: depth)
 
         if isRoot {
-            os_log("JSONNode: Finished parsing. Total nodes created: %d", log: OSLog.default, type: .debug, JSONNode.nodeCount)
+            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
+            os_log("JSONNode: Finished parsing. Total: %d nodes, %d value accesses in %.2f seconds",
+                   log: OSLog.default, type: .debug, JSONNode.nodeCount, JSONNode.valueAccessCount, elapsed)
+            os_log("JSONNode: ===== PARSE END =====", log: OSLog.default, type: .debug)
         }
     }
 
