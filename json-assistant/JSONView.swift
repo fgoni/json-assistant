@@ -563,8 +563,9 @@ struct CollapsibleJSONView: View {
                         : Array(node.children.prefix(visibleChildrenCount))
 
                     ForEach(childrenToRender) { child in
+                        // Use offset instead of padding to avoid nested layout containers
                         CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
-                            .padding(.leading, 16)
+                            .offset(x: 16)
                             .id(child.id)
                     }
 
@@ -573,6 +574,7 @@ struct CollapsibleJSONView: View {
                         loadMoreButton
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .id(node.id)
