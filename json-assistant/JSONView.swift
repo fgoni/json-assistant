@@ -453,11 +453,13 @@ class JSONNode: Identifiable, ObservableObject {
         switch value {
         case let dict as OrderedDictionary:
             let pairs = dict.orderedPairs
-            os_log("JSONNode: Parsing OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .debug, pairs.count, currentDepth)
             children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+            // Only log large dictionaries that might indicate issues
+            if pairs.count > 100 {
+                os_log("JSONNode: Large OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .info, pairs.count, currentDepth)
+            }
 
         case let dict as [String: Any]:
-            os_log("JSONNode: Parsing [String: Any] with %d keys at depth %d", log: OSLog.default, type: .debug, dict.count, currentDepth)
             // Check for circular reference
             if dict.count > 100 {
                 os_log("JSONNode: Large dictionary (%d keys) at depth %d - potential circular structure", log: OSLog.default, type: .error, dict.count, currentDepth)
@@ -472,8 +474,6 @@ class JSONNode: Identifiable, ObservableObject {
         case let array as [Any]:
             // Limit array children to prevent massive expansion
             let arrayCount = array.count
-            os_log("JSONNode: Parsing array with %d elements at depth %d", log: OSLog.default, type: .debug, arrayCount, currentDepth)
-
             let limitedArray = arrayCount > 1000 ? Array(array.prefix(1000)) : array
             if arrayCount > 1000 {
                 os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, arrayCount)
@@ -540,7 +540,8 @@ struct CollapsibleJSONView: View {
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
     let depth: Int
-    @State private var visibleChildrenCount: Int = 50
+    @State private var visibleChildrenCount: Int = 30
+    @State private var renderStartTime: Date?
 
     init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0) {
         self.node = node
@@ -555,13 +556,13 @@ struct CollapsibleJSONView: View {
 
             // Only render children when expanded, and limit depth to prevent excessive nesting
             if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
-                // Use LazyVStack for efficient rendering of large lists
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    // If isFullyLoaded, render all children; otherwise paginate
-                    let childrenToRender = node.isFullyLoaded
-                        ? node.children
-                        : Array(node.children.prefix(visibleChildrenCount))
+                // Compute children to render
+                let childrenToRender = node.isFullyLoaded
+                    ? node.children
+                    : Array(node.children.prefix(visibleChildrenCount))
 
+                // Use regular VStack instead of LazyVStack to avoid constant view creation/destruction during scroll
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(childrenToRender) { child in
                         // Use offset instead of padding to avoid nested layout containers
                         CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
@@ -606,6 +607,7 @@ struct JSONNodeView: View {
     let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
+    @State private var renderCount = 0
 
     var body: some View {
         let isHighlighted = viewModel.formattedSearchMatches.contains(node.id)

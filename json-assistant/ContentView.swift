@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -1057,6 +1058,9 @@ struct JSONOutputView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                     }
+                    .onAppear {
+                        os_log("SCROLL: ScrollView appeared for root node", log: OSLog.default, type: .debug)
+                    }
                     .background(palette.surface)
                     .cornerRadius(12)
                     .overlay(
@@ -1065,6 +1069,7 @@ struct JSONOutputView: View {
                     )
                     .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
                         guard let targetID else { return }
+                        os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
                         // Delay scroll to ensure pagination is resolved and views are laid out
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             withAnimation(.easeInOut(duration: 0.2)) {
