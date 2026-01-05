@@ -107,13 +107,18 @@ extension Font {
     }
 
     static func themedUI(size: CGFloat = 13) -> Font {
+        let baseSize = UserDefaults.standard.double(forKey: ThemeSettings.uiFontSizeDefaultsKey)
+        let resolvedBaseSize = baseSize > 0 ? baseSize : ThemeSettings.defaultUIFontSize
+        let scale = CGFloat(resolvedBaseSize / ThemeSettings.defaultUIFontSize)
+        let scaledSize = max(1, size * scale)
+
         let preferredFonts = ["Inter", "SF Pro Text"]
         for name in preferredFonts {
-            if UXFont(name: name, size: size) != nil {
-                return Font.custom(name, size: size)
+            if UXFont(name: name, size: scaledSize) != nil {
+                return Font.custom(name, size: scaledSize)
             }
         }
-        return Font.system(size: size, weight: .regular, design: .default)
+        return Font.system(size: scaledSize, weight: .regular, design: .default)
     }
 }
 
@@ -135,16 +140,92 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 }
 
 class ThemeSettings: ObservableObject {
+    static let defaultUIFontSize: Double = 13
+    static let defaultRequestJSONFontSize: Double = 13
+    static let defaultFormattedJSONFontSize: Double = 13
+
+    static let minimumFontSize: Double = 9
+    static let maximumFontSize: Double = 28
+
+    static let uiFontSizeDefaultsKey = "uiFontSize"
+    static let requestJSONFontSizeDefaultsKey = "requestJSONFontSize"
+    static let formattedJSONFontSizeDefaultsKey = "formattedJSONFontSize"
+
     @Published var selectedTheme: ThemeMode {
         didSet {
             UserDefaults.standard.set(selectedTheme.rawValue, forKey: "themeMode")
         }
     }
+
+    @Published var uiFontSize: Double {
+        didSet {
+            let clamped = Self.clamp(uiFontSize)
+            guard uiFontSize != clamped else {
+                UserDefaults.standard.set(uiFontSize, forKey: Self.uiFontSizeDefaultsKey)
+                return
+            }
+            uiFontSize = clamped
+        }
+    }
+
+    @Published var requestJSONFontSize: Double {
+        didSet {
+            let clamped = Self.clamp(requestJSONFontSize)
+            guard requestJSONFontSize != clamped else {
+                UserDefaults.standard.set(requestJSONFontSize, forKey: Self.requestJSONFontSizeDefaultsKey)
+                return
+            }
+            requestJSONFontSize = clamped
+        }
+    }
+
+    @Published var formattedJSONFontSize: Double {
+        didSet {
+            let clamped = Self.clamp(formattedJSONFontSize)
+            guard formattedJSONFontSize != clamped else {
+                UserDefaults.standard.set(formattedJSONFontSize, forKey: Self.formattedJSONFontSizeDefaultsKey)
+                return
+            }
+            formattedJSONFontSize = clamped
+        }
+    }
+
     @Published var showSettingsPanel = false
 
     init() {
         let savedTheme = UserDefaults.standard.string(forKey: "themeMode") ?? ThemeMode.system.rawValue
         self.selectedTheme = ThemeMode(rawValue: savedTheme) ?? .system
+
+        let savedUIFontSize = UserDefaults.standard.double(forKey: Self.uiFontSizeDefaultsKey)
+        self.uiFontSize = savedUIFontSize > 0 ? Self.clamp(savedUIFontSize) : Self.defaultUIFontSize
+
+        let savedRequestFontSize = UserDefaults.standard.double(forKey: Self.requestJSONFontSizeDefaultsKey)
+        self.requestJSONFontSize = savedRequestFontSize > 0 ? Self.clamp(savedRequestFontSize) : Self.defaultRequestJSONFontSize
+
+        let savedFormattedFontSize = UserDefaults.standard.double(forKey: Self.formattedJSONFontSizeDefaultsKey)
+        self.formattedJSONFontSize = savedFormattedFontSize > 0 ? Self.clamp(savedFormattedFontSize) : Self.defaultFormattedJSONFontSize
+    }
+
+    func increaseRequestJSONFontSize() {
+        requestJSONFontSize = Self.clamp(requestJSONFontSize + 1)
+    }
+
+    func decreaseRequestJSONFontSize() {
+        requestJSONFontSize = Self.clamp(requestJSONFontSize - 1)
+    }
+
+    func increaseFormattedJSONFontSize() {
+        formattedJSONFontSize = Self.clamp(formattedJSONFontSize + 1)
+    }
+
+    func decreaseFormattedJSONFontSize() {
+        formattedJSONFontSize = Self.clamp(formattedJSONFontSize - 1)
+    }
+
+    func resetFontSizes() {
+        uiFontSize = Self.defaultUIFontSize
+        requestJSONFontSize = Self.defaultRequestJSONFontSize
+        formattedJSONFontSize = Self.defaultFormattedJSONFontSize
     }
 
     /// Get the effective color scheme based on selected theme and system preference
@@ -158,5 +239,8 @@ class ThemeSettings: ObservableObject {
             return .dark
         }
     }
-}
 
+    private static func clamp(_ value: Double) -> Double {
+        min(max(value, minimumFontSize), maximumFontSize)
+    }
+}

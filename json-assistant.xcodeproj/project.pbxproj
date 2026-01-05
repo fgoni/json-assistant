@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5211B6EB2F0C32FA00F5324B /* JsonAssistant.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5211B6EA2F0C32FA00F5324B /* JsonAssistant.icon */; };
 		52B7730A2C73C613007F17CC /* JSON_AssistantApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773092C73C613007F17CC /* JSON_AssistantApp.swift */; };
 		52B7730C2C73C613007F17CC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B7730B2C73C613007F17CC /* ContentView.swift */; };
 		52B7730E2C73C613007F17CC /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B7730D2C73C613007F17CC /* Item.swift */; };
@@ -37,6 +38,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5211B6EA2F0C32FA00F5324B /* JsonAssistant.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = JsonAssistant.icon; sourceTree = "<group>"; };
 		52B773062C73C613007F17CC /* json-assistant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "json-assistant.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52B773092C73C613007F17CC /* JSON_AssistantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantApp.swift; sourceTree = "<group>"; };
 		52B7730B2C73C613007F17CC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -109,6 +111,7 @@
 				52B7730F2C73C614007F17CC /* Assets.xcassets */,
 				52B773142C73C614007F17CC /* JSON_Assistant.entitlements */,
 				52B773112C73C614007F17CC /* Preview Content */,
+				5211B6EA2F0C32FA00F5324B /* JsonAssistant.icon */,
 			);
 			path = "json-assistant";
 			sourceTree = "<group>";
@@ -126,7 +129,7 @@
 			children = (
 				52B7731D2C73C615007F17CC /* JSON_AssistantTests.swift */,
 			);
-			path = "JSON AssistantTests";
+			path = "json-assistant-tests";
 			sourceTree = "<group>";
 		};
 		52B773262C73C615007F17CC /* json-assistant-ui-tests */ = {
@@ -135,7 +138,7 @@
 				52B773272C73C615007F17CC /* JSON_AssistantUITests.swift */,
 				52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */,
 			);
-			path = "JSON AssistantUITests";
+			path = "json-assistant-ui-tests";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -204,7 +207,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1540;
-				LastUpgradeCheck = 1540;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					52B773052C73C613007F17CC = {
 						CreatedOnToolsVersion = 15.4;
@@ -247,6 +250,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				52B773132C73C614007F17CC /* Preview Assets.xcassets in Resources */,
+				5211B6EB2F0C32FA00F5324B /* JsonAssistant.icon in Resources */,
 				52B773102C73C614007F17CC /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -347,6 +351,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -371,6 +376,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -410,6 +416,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -427,6 +434,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -434,27 +442,33 @@
 		52B7732E2C73C615007F17CC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = JsonAssistant;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "json-assistant/JSON_Assistant.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 13;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"json-assistant/Preview Content\"";
 				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "JSON Assistant";
+				INFOPLIST_KEY_CFBundleName = "$(PRODUCT_DISPLAY_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-			INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4.0;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
-				PRODUCT_DISPLAY_NAME = "JSON Assistant";
+				PRODUCT_DISPLAY_NAME = JsonAssistant;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -464,27 +478,33 @@
 		52B7732F2C73C615007F17CC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = JsonAssistant;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "json-assistant/JSON_Assistant.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 13;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"json-assistant/Preview Content\"";
 				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "JSON Assistant";
+				INFOPLIST_KEY_CFBundleName = "$(PRODUCT_DISPLAY_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-			INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4.0;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-Assistant";
-				PRODUCT_DISPLAY_NAME = "JSON Assistant";
+				PRODUCT_DISPLAY_NAME = JsonAssistant;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -494,50 +514,50 @@
 		52B773312C73C615007F17CC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 16;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/json-assistant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JSON Assistant";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/json-assistant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/json-assistant";
 			};
 			name = Debug;
 		};
 		52B773322C73C615007F17CC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 16;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/json-assistant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JSON Assistant";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/json-assistant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/json-assistant";
 			};
 			name = Release;
 		};
 		52B773342C73C615007F17CC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 16;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -549,12 +569,12 @@
 		52B773352C73C615007F17CC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 16;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.0;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.coffeedevs.JSON-AssistantUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

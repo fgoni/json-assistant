@@ -6,31 +6,57 @@
 //
 
 import XCTest
-@testable import JSON_Assistant
+import Combine
+@testable import json_assistant
 
 final class JSON_AssistantTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-    }
+    func testExpandAllPublishesExpansionStateOnMainThread() async throws {
+        let viewModel = await MainActor.run { JSONViewModel() }
+        let rootNode = JSONNode(
+            key: "Root",
+            value: [
+                "a": 1,
+                "b": ["c": 2],
+                "d": [1, 2, 3]
+            ],
+            isRoot: true
+        )
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
+        let expectedCount = countNodes(from: rootNode)
+        await MainActor.run { viewModel.rootNode = rootNode }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
-    }
+        let published = expectation(description: "Expansion state published")
+        var cancellable: AnyCancellable?
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
+        cancellable = await MainActor.run {
+            viewModel.$expansionState
+                .dropFirst()
+                .sink { state in
+                    XCTAssertTrue(Thread.isMainThread)
+                    XCTAssertEqual(state.count, expectedCount)
+                    XCTAssertTrue(state.values.allSatisfy { $0 })
+                    published.fulfill()
+                }
         }
+
+        await MainActor.run { viewModel.expandAll() }
+        await fulfillment(of: [published], timeout: 2.0)
+
+        cancellable?.cancel()
+        await MainActor.run {
+            XCTAssertFalse(viewModel.isExpandingOrCollapsing)
+        }
+    }
+
+    private func countNodes(from root: JSONNode) -> Int {
+        var count = 0
+        var stack: [JSONNode] = [root]
+        while let node = stack.popLast() {
+            count += 1
+            stack.append(contentsOf: node.children)
+        }
+        return count
     }
 
 }

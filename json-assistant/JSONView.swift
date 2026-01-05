@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import os
 
 class OrderedDictionary {
     private var keys: [String] = []
@@ -385,32 +386,60 @@ enum OrderedJSONFormatter {
 }
 
 class JSONNode: Identifiable, ObservableObject {
+    private static let maxDepth = 100
+    private static var nodeCount = 0
+
     let id = UUID()
     let key: String
     let isRoot: Bool
+    let depth: Int
     @Published var value: Any
     @Published var isExpanded: Bool = false
     @Published var children: [JSONNode] = []
-    
-    init(key: String, value: Any, isRoot: Bool = false) {
+    @Published var isFullyLoaded: Bool = false
+
+    init(key: String, value: Any, isRoot: Bool = false, depth: Int = 0) {
         self.key = key
         self.isRoot = isRoot
         self.value = value
-        parseValue(value)
+        self.depth = depth
+        JSONNode.nodeCount += 1
+
+        // Debug logging for the first node (root)
+        if isRoot {
+            JSONNode.nodeCount = 1
+            os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
+        }
+
+        parseValue(value, currentDepth: depth)
+
+        if isRoot {
+            os_log("JSONNode: Finished parsing. Total nodes created: %d", log: OSLog.default, type: .debug, JSONNode.nodeCount)
+        }
     }
-    
-    private func parseValue(_ value: Any) {
+
+    private func parseValue(_ value: Any, currentDepth: Int) {
+        // Prevent infinite recursion beyond max depth
+        guard currentDepth < Self.maxDepth else {
+            return
+        }
+
         switch value {
         case let dict as OrderedDictionary:
-            children = dict.orderedPairs.map { JSONNode(key: $0.0, value: $0.1) }
+            children = dict.orderedPairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
         case let dict as [String: Any]:
             let ordered = OrderedDictionary()
             for (key, value) in dict {
                 ordered[key] = value
             }
-            children = ordered.orderedPairs.map { JSONNode(key: $0.0, value: $0.1) }
+            children = ordered.orderedPairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
         case let array as [Any]:
-            children = array.enumerated().map { JSONNode(key: "[\($0)]", value: $1) }
+            // Limit array children to prevent massive expansion
+            let limitedArray = array.count > 1000 ? Array(array.prefix(1000)) : array
+            if array.count > 1000 {
+                os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, array.count)
+            }
+            children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1) }
         default:
             break
         }
@@ -488,7 +517,10 @@ struct CollapsibleJSONView: View {
             if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
                 // Use LazyVStack for efficient rendering of large lists
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    let childrenToRender = Array(node.children.prefix(visibleChildrenCount))
+                    // If isFullyLoaded, render all children; otherwise paginate
+                    let childrenToRender = node.isFullyLoaded
+                        ? node.children
+                        : Array(node.children.prefix(visibleChildrenCount))
 
                     ForEach(childrenToRender) { child in
                         CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1)
@@ -496,8 +528,8 @@ struct CollapsibleJSONView: View {
                             .id(child.id)
                     }
 
-                    // Show "Load More" button if there are hidden children
-                    if node.children.count > visibleChildrenCount {
+                    // Show "Load More" button if there are hidden children and not fully loaded
+                    if !node.isFullyLoaded && node.children.count > visibleChildrenCount {
                         loadMoreButton
                     }
                 }
@@ -512,12 +544,10 @@ struct CollapsibleJSONView: View {
             // Increase visible count by 50
             visibleChildrenCount = min(visibleChildrenCount + 50, node.children.count)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "ellipsis.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                HStack(spacing: 8) {
+                    Image(systemName: "ellipsis.circle.fill")
                     .foregroundColor(palette.accent)
                 Text("Show \(min(50, node.children.count - visibleChildrenCount)) more...")
-                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(palette.accent)
                 Spacer(minLength: 0)
             }
@@ -659,6 +689,7 @@ class JSONViewModel: ObservableObject {
         didSet { rebuildNodeLookup() }
     }
     @Published var errorMessage: String?
+    @Published var isLoadingJSON: Bool = false
     @Published var parsedJSONs: [ParsedJSON] = []
     @Published var selectedJSONID: UUID?
     @Published var isSubmittingFeedback: Bool = false
@@ -852,24 +883,35 @@ class JSONViewModel: ObservableObject {
             let prettyString = autoExpand ? OrderedJSONFormatter.prettyPrinted(parsedValue) : ""
 
             let rootLabel = JSONNode.describeType(of: parsedValue)
+
+            // Update UI immediately, show loading state
             DispatchQueue.main.async {
                 if autoExpand {
                     self.setEditorText(prettyString)
                 }
-                self.rootNode = JSONNode(key: rootLabel, value: parsedValue, isRoot: true)
+                self.isLoadingJSON = true
                 self.formattedSearchSnapshot = nil
                 self.errorMessage = nil
-                self.persistParsedJSONIfNeeded(originalJSON: jsonString, autoExpand: autoExpand)
-                self.applyFormattedSearchIfNeeded()
+            }
 
-                if autoExpand {
-                    // Only auto-expand for reasonably sized JSON (<50KB)
-                    let shouldAutoExpand = jsonString.utf8.count < 50_000
-                    if shouldAutoExpand {
-                        self.setExpansionState(for: self.rootNode, isExpanded: true)
-                    } else {
-                        // For large JSON, only expand the root
-                        if let rootNode = self.rootNode {
+            // Build the node tree on background thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let rootNode = JSONNode(key: rootLabel, value: parsedValue, isRoot: true)
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.rootNode = rootNode
+                    self.isLoadingJSON = false
+                    self.persistParsedJSONIfNeeded(originalJSON: jsonString, autoExpand: autoExpand)
+                    self.applyFormattedSearchIfNeeded()
+
+                    if autoExpand {
+                        // Only auto-expand for reasonably sized JSON (<50KB)
+                        let shouldAutoExpand = jsonString.utf8.count < 50_000
+                        if shouldAutoExpand {
+                            self.setExpansionState(for: rootNode, isExpanded: true)
+                        } else {
+                            // For large JSON, only expand the root
                             self.setExpanded(true, for: rootNode.id)
                         }
                     }
@@ -883,6 +925,7 @@ class JSONViewModel: ObservableObject {
                     self.errorMessage = "Error parsing JSON: \(error.localizedDescription)"
                 }
                 self.rootNode = nil
+                self.isLoadingJSON = false
                 self.formattedSearchSnapshot = nil
                 self.clearFormattedSearchResults()
             }
@@ -971,28 +1014,56 @@ class JSONViewModel: ObservableObject {
         performExpansionOperation(isExpanded: false)
     }
 
-    private func performExpansionOperation(isExpanded: Bool) {
-        // Cancel any previous expansion operation
-        expansionWorkItem?.cancel()
+	    private func performExpansionOperation(isExpanded: Bool) {
+	        // Cancel any previous expansion operation
+	        expansionWorkItem?.cancel()
 
-        // Set loading state on main thread
-        isExpandingOrCollapsing = true
+	        guard let rootNode else {
+	            isExpandingOrCollapsing = false
+	            expansionWorkItem = nil
+	            return
+	        }
 
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
+	        isExpandingOrCollapsing = true
 
-            // Do the heavy work on background thread
-            self.setExpansionState(for: self.rootNode, isExpanded: isExpanded)
+	        var workItem: DispatchWorkItem?
+	        workItem = DispatchWorkItem { [weak self, rootNode] in
+	            guard let self = self else { return }
 
-            // Update loading state on main thread
-            DispatchQueue.main.async {
-                self.isExpandingOrCollapsing = false
-            }
-        }
+	            var updatedExpansionState: [UUID: Bool] = [:]
+	            var stack: [JSONNode] = [rootNode]
 
-        expansionWorkItem = workItem
-        expansionQueue.async(execute: workItem)
-    }
+	            while let node = stack.popLast() {
+	                if let workItem = workItem, workItem.isCancelled {
+	                    DispatchQueue.main.async { [weak self, weak workItem] in
+	                        guard let self = self else { return }
+	                        guard let workItem = workItem, self.expansionWorkItem === workItem else { return }
+	                        self.isExpandingOrCollapsing = false
+	                        self.expansionWorkItem = nil
+	                    }
+	                    return
+	                }
+
+	                updatedExpansionState[node.id] = isExpanded
+	                stack.append(contentsOf: node.children)
+	            }
+
+	            DispatchQueue.main.async { [weak self, weak workItem] in
+	                guard let self = self else { return }
+	                guard let workItem = workItem, !workItem.isCancelled else { return }
+	                guard self.expansionWorkItem === workItem else { return }
+
+	                self.expansionState = updatedExpansionState
+	                self.isExpandingOrCollapsing = false
+	                self.expansionWorkItem = nil
+	            }
+	        }
+
+	        expansionWorkItem = workItem
+	        if let workItem = workItem {
+	            expansionQueue.async(execute: workItem)
+	        }
+	    }
     
     private func setExpansionState(for node: JSONNode?, isExpanded: Bool) {
         guard let node = node else { return }
@@ -1467,6 +1538,19 @@ class JSONViewModel: ObservableObject {
         }
     }
 
+    /// Marks all ancestors of a match as fully loaded so they render all children
+    /// This ensures pagination doesn't hide search results in large arrays
+    private func ensureMatchIsVisible(matchID: UUID) {
+        guard let matchNode = nodeLookup[matchID] else { return }
+
+        // Walk up the tree and mark all ancestors as fully loaded
+        var current = matchNode
+        while let parent = nodeLookup.values.first(where: { $0.children.contains(where: { $0.id == current.id }) }) {
+            parent.isFullyLoaded = true
+            current = parent
+        }
+    }
+
     private func applyFormattedSearchComputation(_ computation: FormattedSearchComputation, rootNode: JSONNode) {
         // Batch view updates by setting published properties together
         // This reduces the number of view re-renders from multiple to just one
@@ -1480,6 +1564,12 @@ class JSONViewModel: ObservableObject {
 
         // Expand nodes first (without triggering view updates yet)
         expandNodesWithoutPublishing(with: computation.expansionIDs)
+
+        // Ensure all matches are visible by marking their parent nodes as fully loaded
+        // This prevents pagination from hiding search results in large arrays
+        for matchID in computation.matchesOrdered {
+            ensureMatchIsVisible(matchID: matchID)
+        }
 
         // Now publish all changes together, triggering a single view update cycle
         formattedSearchMatches = computation.highlightIDs

@@ -9,17 +9,23 @@ import AppKit
 struct SyntaxHighlightedTextEditor: NSViewRepresentable {
     @Binding var text: String
     let palette: ThemePalette
+    let fontSize: CGFloat
     let onPaste: (String) -> Void
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        let textView = scrollView.documentView as! NSTextView
+	    func makeNSView(context: Context) -> NSScrollView {
+	        let scrollView = NSTextView.scrollableTextView()
+	        let textView = scrollView.documentView as! NSTextView
 
         textView.delegate = context.coordinator
         textView.isRichText = false
-        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         textView.textColor = NSColor(palette.text)
         textView.backgroundColor = .clear
+	        textView.insertionPointColor = NSColor(palette.accent)
+	        textView.selectedTextAttributes = [
+	            .backgroundColor: NSColor(palette.selection),
+	            .foregroundColor: NSColor.selectedTextColor
+	        ]
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -37,8 +43,18 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         return scrollView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+	    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+	        guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.font?.pointSize != fontSize {
+            textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        }
+        if textView.insertionPointColor != NSColor(palette.accent) {
+            textView.insertionPointColor = NSColor(palette.accent)
+        }
+	        textView.selectedTextAttributes = [
+	            .backgroundColor: NSColor(palette.selection),
+	            .foregroundColor: NSColor.selectedTextColor
+	        ]
 
         if textView.string != text {
             let selectedRange = textView.selectedRanges.first?.rangeValue ?? NSRange(location: 0, length: 0)
@@ -55,7 +71,7 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         Coordinator(text: $text, palette: palette, onPaste: onPaste)
     }
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+	    class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         let palette: ThemePalette
         let onPaste: (String) -> Void
@@ -69,9 +85,9 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
             self.onPaste = onPaste
         }
 
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            text = textView.string
+	        func textDidChange(_ notification: Notification) {
+	            guard let textView = notification.object as? NSTextView else { return }
+	            text = textView.string
 
             // Debounce syntax highlighting - increased to 400ms for better typing responsiveness
             // This reduces unnecessary highlight calculations when user is actively typing
@@ -82,13 +98,21 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
                 }
             }
             highlightWorkItem = workItem
-            highlightQueue.asyncAfter(deadline: .now() + 0.4, execute: workItem)
-        }
+	            highlightQueue.asyncAfter(deadline: .now() + 0.4, execute: workItem)
+	        }
 
-        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
-            // Detect paste operation
-            if let replacement = replacementString, replacement.count > 1 {
-                // This is likely a paste
+	        func textViewDidChangeSelection(_ notification: Notification) {
+	            guard let textView = notification.object as? NSTextView else { return }
+	            textView.selectedTextAttributes = [
+	                .backgroundColor: NSColor(palette.selection),
+	                .foregroundColor: NSColor.selectedTextColor
+	            ]
+	        }
+
+	        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+	            // Detect paste operation
+	            if let replacement = replacementString, replacement.count > 1 {
+	                // This is likely a paste
                 let pasteBoard = NSPasteboard.general
                 if let pastedText = pasteBoard.string(forType: .string), pastedText == replacement {
                     DispatchQueue.main.async { [weak self] in
@@ -262,31 +286,168 @@ struct ContentView: View {
         return ThemePalette.palette(for: effectiveColorScheme)
     }
 
-    var body: some View {
-        ZStack {
-            palette.background.ignoresSafeArea()
-
-            NavigationView {
-                SidebarView(jsonViewModel: jsonViewModel, palette: palette)
-                    .frame(minWidth: 220)
-                    .background(palette.surface)
-
-                HSplitView {
-                    JSONInputView(jsonViewModel: jsonViewModel, palette: palette)
-                        .frame(minWidth: 280)
-                    JSONOutputView(jsonViewModel: jsonViewModel, palette: palette)
-                        .frame(minWidth: 360)
-                }
-                .background(palette.background)
-            }
-            .navigationViewStyle(.automatic)
+    private var windowTitle: String {
+        guard let selectedID = jsonViewModel.selectedJSONID,
+              let selected = jsonViewModel.parsedJSONs.first(where: { $0.id == selectedID }) else {
+            return "JSON Assistant"
         }
-        .accentColor(palette.accent)
+        let trimmed = selected.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "JSON Assistant" : trimmed
+    }
+
+	    var body: some View {
+	        ZStack {
+	            palette.background.ignoresSafeArea()
+
+	            NavigationView {
+	                SidebarView(jsonViewModel: jsonViewModel, palette: palette)
+	                    .frame(minWidth: 220)
+	                    .background(palette.surface)
+
+	                HSplitView {
+	                    JSONInputView(jsonViewModel: jsonViewModel, themeSettings: themeSettings, palette: palette)
+	                        .frame(minWidth: 280)
+	                    JSONOutputView(jsonViewModel: jsonViewModel, themeSettings: themeSettings, palette: palette)
+	                        .frame(minWidth: 360)
+	                }
+	                .background(palette.background)
+	            }
+	            .navigationViewStyle(.automatic)
+	            .padding(.top, 16)
+	        }
+	        .accentColor(palette.accent)
+	        .background(
+	            WindowConfigurator(title: windowTitle)
+        )
         .sheet(isPresented: $themeSettings.showSettingsPanel) {
             SettingsView(themeSettings: themeSettings)
         }
     }
 }
+
+#if canImport(AppKit)
+private struct WindowConfigurator: NSViewRepresentable {
+    let title: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            if window.title != title {
+                window.title = title
+            }
+
+            context.coordinator.attachChromeIfNeeded(to: window)
+            context.coordinator.updateTitle(title)
+
+            if #available(macOS 11.0, *) {
+                window.toolbarStyle = .unifiedCompact
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSToolbarDelegate {
+        private static let toolbarIdentifier = NSToolbar.Identifier("MainToolbar")
+
+        private weak var window: NSWindow?
+        private weak var titlebarLabel: NSTextField?
+        private weak var titlebarLabelSuperview: NSView?
+
+	        func attachChromeIfNeeded(to window: NSWindow) {
+	            self.window = window
+
+            if window.toolbar?.identifier != Self.toolbarIdentifier {
+                let toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+                toolbar.delegate = self
+                toolbar.displayMode = .iconOnly
+                toolbar.allowsUserCustomization = false
+                toolbar.autosavesConfiguration = false
+                toolbar.showsBaselineSeparator = true
+                window.toolbar = toolbar
+	            } else if window.toolbar?.delegate == nil {
+	                window.toolbar?.delegate = self
+	            }
+
+	            window.titlebarAppearsTransparent = false
+	            window.styleMask.remove(.fullSizeContentView)
+	            window.titleVisibility = .hidden
+	            attachOrUpdateTitlebarLabel(for: window)
+	        }
+
+        func updateTitle(_ title: String) {
+            guard let label = titlebarLabel else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            label.stringValue = title
+            CATransaction.commit()
+        }
+
+        func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            []
+        }
+
+        func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            []
+        }
+
+        func toolbar(
+            _ toolbar: NSToolbar,
+            itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+            willBeInsertedIntoToolbar flag: Bool
+        ) -> NSToolbarItem? {
+            nil
+        }
+
+	        private func attachOrUpdateTitlebarLabel(for window: NSWindow) {
+	            guard let zoomButton = window.standardWindowButton(.zoomButton) else { return }
+	            guard let container = zoomButton.superview?.superview ?? zoomButton.superview else { return }
+
+	            if titlebarLabelSuperview !== container || titlebarLabel == nil {
+	                titlebarLabel?.removeFromSuperview()
+
+	                let label = NSTextField(labelWithString: "")
+	                label.textColor = .labelColor
+	                label.lineBreakMode = .byTruncatingTail
+	                label.translatesAutoresizingMaskIntoConstraints = false
+	                label.maximumNumberOfLines = 1
+
+	                container.addSubview(label)
+
+	                NSLayoutConstraint.activate([
+	                    label.leadingAnchor.constraint(equalTo: zoomButton.trailingAnchor, constant: 8),
+	                    label.centerYAnchor.constraint(equalTo: zoomButton.centerYAnchor),
+	                    label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12)
+	                ])
+
+	                titlebarLabel = label
+	                titlebarLabelSuperview = container
+
+	                // Set font properties asynchronously to avoid constraint cascade crashes
+	                DispatchQueue.main.async { [weak label] in
+	                    CATransaction.begin()
+	                    CATransaction.setDisableActions(true)
+	                    label?.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+	                    label?.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+	                    label?.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+	                    CATransaction.commit()
+	                }
+	            }
+	        }
+	    }
+	}
+#else
+private struct WindowConfigurator: View {
+    let title: String
+    var body: some View { EmptyView() }
+}
+#endif
 
 
 struct SidebarView: View {
@@ -298,14 +459,13 @@ struct SidebarView: View {
     @State private var feedbackDraft: String = ""
     @State private var didSubmitFeedback: Bool = false
 
-    var body: some View {
-        VStack(spacing: 16) {
-            LogoView()
-                .frame(width: 88, height: 88)
-                .padding(.top, 12)
+	    var body: some View {
+	        VStack(spacing: 16) {
+	            LogoView()
+	                .frame(width: 88, height: 88)
 
-            VStack(spacing: 4) {
-                Text("JSON Assistant")
+	            VStack(spacing: 4) {
+	                Text("JSON Assistant")
                     .font(.themedUI(size: 13))
                     .fontWeight(.semibold)
                     .foregroundColor(palette.text)
@@ -325,7 +485,8 @@ struct SidebarView: View {
             if jsonViewModel.parsedJSONs.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray")
-                        .font(.system(size: 28, weight: .semibold))
+                        .font(.themedUI(size: 28))
+                        .fontWeight(.semibold)
                         .foregroundColor(palette.punctuation)
                     Text("No saved responses yet")
                         .font(.themedUI(size: 12))
@@ -336,7 +497,8 @@ struct SidebarView: View {
             } else if filteredSections.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "text.magnifyingglass")
-                        .font(.system(size: 28, weight: .semibold))
+                        .font(.themedUI(size: 28))
+                        .fontWeight(.semibold)
                         .foregroundColor(palette.punctuation)
                     Text("No matches found")
                         .font(.themedUI(size: 12))
@@ -400,7 +562,8 @@ struct SidebarView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "paperplane.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
                         Text(jsonViewModel.isSubmittingFeedback ? "Submitting..." : "Submit Feedback")
                             .font(.themedUI(size: 12))
                             .fontWeight(.semibold)
@@ -432,9 +595,10 @@ struct SidebarView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 16)
-        .background(palette.surface)
+	        .padding(.top, 12)
+	        .padding(.horizontal, 12)
+	        .padding(.bottom, 16)
+	        .background(palette.surface)
         .sheet(isPresented: $isShowingFeedbackSheet) {
             FeedbackSheet(
                 palette: palette,
@@ -450,7 +614,8 @@ struct SidebarView: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.themedUI(size: 12))
+                .fontWeight(.semibold)
                 .foregroundColor(palette.text)
             TextField("Search saved JSON", text: $searchText)
                 .textFieldStyle(.plain)
@@ -466,7 +631,8 @@ struct SidebarView: View {
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.themedUI(size: 12))
+                        .fontWeight(.semibold)
                         .foregroundColor(palette.text)
                 }
                 .buttonStyle(.plain)
@@ -571,7 +737,8 @@ struct SidebarView: View {
                 if let message = jsonViewModel.feedbackSubmissionMessage, didSubmit {
                     HStack(spacing: 8) {
                         Image(systemName: jsonViewModel.feedbackSubmissionIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
                             .foregroundColor(jsonViewModel.feedbackSubmissionIsError ? palette.boolFalse : palette.accent)
                         Text(message)
                             .font(.themedUI(size: 11))
@@ -679,6 +846,7 @@ struct LogoView: View {
 
 struct JSONInputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
+    @ObservedObject var themeSettings: ThemeSettings
     let palette: ThemePalette
 
     var body: some View {
@@ -714,6 +882,7 @@ struct JSONInputView: View {
             SyntaxHighlightedTextEditor(
                 text: $jsonViewModel.inputJSON,
                 palette: palette,
+                fontSize: CGFloat(themeSettings.requestJSONFontSize),
                 onPaste: { pastedText in
                     jsonViewModel.inputJSON = pastedText
                     jsonViewModel.beautifyAndSaveJSON()
@@ -732,7 +901,7 @@ struct JSONInputView: View {
             )
             #else
             TextEditor(text: $jsonViewModel.inputJSON)
-                .font(.themedCode())
+                .font(.themedCode(size: CGFloat(themeSettings.requestJSONFontSize)))
                 .foregroundColor(palette.text)
                 .scrollContentBackground(.hidden)
                 .hideScrollIndicatorsIfAvailable()
@@ -770,6 +939,7 @@ struct JSONInputView: View {
 
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
+    @ObservedObject var themeSettings: ThemeSettings
     let palette: ThemePalette
     @State private var localSearchText: String = ""
     @State private var searchDebounceTimer: Timer?
@@ -793,7 +963,7 @@ struct JSONOutputView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(palette.accentButtonText)
                         if !jsonViewModel.isExpandingOrCollapsing {
-                            Text("⌘⇧-")
+                            Text("⌘⌥-")
                                 .font(.themedUI(size: 11))
                                 .foregroundColor(palette.accentButtonText)
                         }
@@ -806,7 +976,7 @@ struct JSONOutputView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
-                .keyboardShortcut(KeyEquivalent("-"), modifiers: [.command, .shift])
+                .keyboardShortcut(KeyEquivalent("-"), modifiers: [.command, .option])
 
                 Button {
                     jsonViewModel.expandAll()
@@ -817,7 +987,7 @@ struct JSONOutputView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(palette.accentButtonText)
                         if !jsonViewModel.isExpandingOrCollapsing {
-                            Text("⌘⇧=")
+                            Text("⌘⌥=")
                                 .font(.themedUI(size: 11))
                                 .foregroundColor(palette.accentButtonText)
                         }
@@ -830,7 +1000,7 @@ struct JSONOutputView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
-                .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .shift])
+                .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .option])
             }
             .onChange(of: jsonViewModel.selectedJSONID) { newSelectedID in
                 // Save current search state for previous JSON
@@ -862,12 +1032,27 @@ struct JSONOutputView: View {
                 }
             }
 
-            if let rootNode = jsonViewModel.rootNode {
+            if jsonViewModel.isLoadingJSON {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5, anchor: .center)
+                    Text("Processing JSON...")
+                        .font(.themedUI(size: 12))
+                        .foregroundColor(palette.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .background(palette.surface)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                )
+            } else if let rootNode = jsonViewModel.rootNode {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
                             CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette)
-                                .font(.themedCode())
+                                .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
@@ -880,7 +1065,8 @@ struct JSONOutputView: View {
                     )
                     .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
                         guard let targetID else { return }
-                        DispatchQueue.main.async {
+                        // Delay scroll to ensure pagination is resolved and views are laid out
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 proxy.scrollTo(targetID, anchor: .center)
                             }
@@ -920,7 +1106,8 @@ struct JSONOutputView: View {
                         jsonViewModel.focusPreviousFormattedMatch()
                     } label: {
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.themedUI(size: 11))
+                            .fontWeight(.semibold)
                             .foregroundColor(matchCount > 1 ? palette.accent : palette.muted)
                     }
                     .buttonStyle(.plain)
@@ -930,7 +1117,8 @@ struct JSONOutputView: View {
                         jsonViewModel.focusNextFormattedMatch()
                     } label: {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.themedUI(size: 11))
+                            .fontWeight(.semibold)
                             .foregroundColor(matchCount > 1 ? palette.accent : palette.muted)
                     }
                     .buttonStyle(.plain)
@@ -949,7 +1137,8 @@ struct JSONOutputView: View {
                     .frame(width: 12, height: 12)
             } else {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
                     .foregroundColor(palette.muted)
             }
             TextField(
@@ -978,7 +1167,8 @@ struct JSONOutputView: View {
                     jsonViewModel.updateFormattedSearch(with: "")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.themedUI(size: 12))
+                        .fontWeight(.semibold)
                         .foregroundColor(palette.muted.opacity(0.7))
                 }
                 .buttonStyle(.plain)
@@ -1048,7 +1238,8 @@ struct SettingsView: View {
                             ForEach(ThemeMode.allCases) { mode in
                                 HStack(spacing: 12) {
                                     Image(systemName: themeSettings.selectedTheme == mode ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 14, weight: .semibold))
+                                        .font(.themedUI(size: 14))
+                                        .fontWeight(.semibold)
                                         .foregroundColor(
                                             themeSettings.selectedTheme == mode
                                             ? palette.accent
@@ -1107,6 +1298,52 @@ struct SettingsView: View {
                         )
                     }
 
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Font Sizes")
+                            .font(.themedUI(size: 13))
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.text)
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            fontSizeRow(
+                                title: "UI",
+                                value: $themeSettings.uiFontSize,
+                                hint: "Scales interface text"
+                            )
+
+                            fontSizeRow(
+                                title: "Request JSON",
+                                value: $themeSettings.requestJSONFontSize,
+                                hint: "⌘⇧= / ⌘⇧-"
+                            )
+
+                            fontSizeRow(
+                                title: "Formatted JSON",
+                                value: $themeSettings.formattedJSONFontSize,
+                                hint: "⌘= / ⌘-"
+                            )
+
+                            HStack {
+                                Spacer()
+                                Button("Reset Font Sizes") {
+                                    themeSettings.resetFontSizes()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.themedUI(size: 12))
+                                .foregroundColor(palette.accent)
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(palette.surface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+
                     Spacer()
                 }
                 .padding(12)
@@ -1137,6 +1374,72 @@ struct SettingsView: View {
         .frame(minWidth: 400, minHeight: 300)
         .background(palette.background)
     }
+
+	    @ViewBuilder
+	    private func fontSizeRow(title: String, value: Binding<Double>, hint: String) -> some View {
+	        let canDecrease = value.wrappedValue > ThemeSettings.minimumFontSize
+	        let canIncrease = value.wrappedValue < ThemeSettings.maximumFontSize
+
+	        HStack(alignment: .firstTextBaseline, spacing: 10) {
+	            VStack(alignment: .leading, spacing: 2) {
+	                Text(title)
+	                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+
+                if !hint.isEmpty {
+                    Text(hint)
+                        .font(.themedUI(size: 11))
+                        .foregroundColor(palette.muted)
+                }
+            }
+
+            Spacer()
+
+	            Text("\(Int(value.wrappedValue)) pt")
+	                .font(.themedUI(size: 12))
+	                .foregroundColor(palette.muted)
+	                .frame(minWidth: 44, alignment: .trailing)
+
+		            VStack(spacing: 2) {
+		                Button {
+		                    value.wrappedValue = min(value.wrappedValue + 1, ThemeSettings.maximumFontSize)
+		                } label: {
+		                    Image(systemName: "chevron.up")
+		                        .font(.themedUI(size: 11))
+		                        .fontWeight(.semibold)
+		                        .foregroundColor(canIncrease ? palette.accent : palette.muted.opacity(0.6))
+		                        .frame(width: 18, height: 14)
+		                        .contentShape(Rectangle())
+		                }
+		                .buttonStyle(.plain)
+		                .disabled(!canIncrease)
+
+	                Button {
+	                    value.wrappedValue = max(value.wrappedValue - 1, ThemeSettings.minimumFontSize)
+		                } label: {
+		                    Image(systemName: "chevron.down")
+		                        .font(.themedUI(size: 11))
+		                        .fontWeight(.semibold)
+		                        .foregroundColor(canDecrease ? palette.accent : palette.muted.opacity(0.6))
+		                        .frame(width: 18, height: 14)
+		                        .contentShape(Rectangle())
+		                }
+		                .buttonStyle(.plain)
+		                .disabled(!canDecrease)
+		            }
+	            .padding(.vertical, 4)
+	            .padding(.horizontal, 4)
+	            .background(
+	                RoundedRectangle(cornerRadius: 8, style: .continuous)
+	                    .fill(palette.background.opacity(0.45))
+	            )
+	            .overlay(
+	                RoundedRectangle(cornerRadius: 8, style: .continuous)
+	                    .stroke(palette.punctuation.opacity(0.25), lineWidth: 1)
+	            )
+	        }
+	    }
 }
 
 private struct JSONPlaceholderView: View {
@@ -1299,10 +1602,10 @@ private struct SavedJSONRow: View {
 private extension View {
     @ViewBuilder
     func hideScrollIndicatorsIfAvailable() -> some View {
-        if #available(macOS 13.0, iOS 16.0, *) {
-            scrollIndicators(.hidden)
-        } else {
-            self
-        }
-    }
-}
+	        if #available(macOS 13.0, iOS 16.0, *) {
+	            scrollIndicators(.hidden)
+	        } else {
+	            self
+	        }
+	    }
+	}

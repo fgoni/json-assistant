@@ -10,9 +10,6 @@ struct JSON_AssistantApp: App {
             ContentView(jsonViewModel: viewModel, themeSettings: themeSettings)
                 .environmentObject(themeSettings)
         }
-#if os(macOS)
-        .windowStyle(.hiddenTitleBar)
-#endif
         .commands {
             CommandMenu("JSON Actions") {
                 Button("New Entry") {
@@ -23,12 +20,12 @@ struct JSON_AssistantApp: App {
                 Button("Collapse All") {
                     viewModel.collapseAll()
                 }
-                .keyboardShortcut("-", modifiers: [.command, .shift])
+                .keyboardShortcut("-", modifiers: [.command, .option])
 
                 Button("Expand All") {
                     viewModel.expandAll()
                 }
-                .keyboardShortcut("=", modifiers: [.command, .shift])
+                .keyboardShortcut("=", modifiers: [.command, .option])
 
                 Divider()
 
@@ -65,6 +62,36 @@ struct JSON_AssistantApp: App {
                 }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(viewModel.formattedSearchMatchOrder.isEmpty)
+            }
+
+            CommandMenu("Font Size") {
+                Button("Increase Formatted JSON Font Size") {
+                    themeSettings.increaseFormattedJSONFontSize()
+                }
+                .keyboardShortcut("=", modifiers: .command)
+
+                Button("Decrease Formatted JSON Font Size") {
+                    themeSettings.decreaseFormattedJSONFontSize()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Divider()
+
+                Button("Increase Request JSON Font Size") {
+                    themeSettings.increaseRequestJSONFontSize()
+                }
+                .keyboardShortcut("=", modifiers: [.command, .shift])
+
+                Button("Decrease Request JSON Font Size") {
+                    themeSettings.decreaseRequestJSONFontSize()
+                }
+                .keyboardShortcut("-", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Reset Font Sizes") {
+                    themeSettings.resetFontSizes()
+                }
             }
 
             CommandMenu("Settings") {
