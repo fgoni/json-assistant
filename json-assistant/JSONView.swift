@@ -652,12 +652,12 @@ struct JSONNodeView: View {
                 Text(node.typeDescription)
                     .foregroundColor(isFocused ? palette.surface : palette.muted)
                     .fontWeight(isFocused ? .semibold : .regular)
-                    .lineLimit(wordWrap ? nil : 1)
+                    .formattedLineWrap(wordWrap)
             } else {
                 Text(node.key)
                     .foregroundColor(keyColor)
                     .fontWeight(keyWeight)
-                    .lineLimit(wordWrap ? nil : 1)
+                    .formattedLineWrap(wordWrap)
                 Text(":")
                     .foregroundColor(punctuationColor)
                     .fontWeight(keyWeight)
@@ -670,7 +670,9 @@ struct JSONNodeView: View {
                     .foregroundColor(palette.muted)
             }
             
-            Spacer(minLength: 0)
+            if wordWrap {
+                Spacer(minLength: 0)
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
@@ -690,12 +692,12 @@ struct JSONNodeView: View {
             Text("Object")
                 .foregroundColor(palette.muted)
                 .textSelection(.enabled)
-                .lineLimit(wordWrap ? nil : 1)
+                .formattedLineWrap(wordWrap)
         } else if node.value is [Any] {
             Text("Array")
                 .foregroundColor(palette.muted)
                 .textSelection(.enabled)
-                .lineLimit(wordWrap ? nil : 1)
+                .formattedLineWrap(wordWrap)
         } else if let stringValue = node.value as? String {
             if let url = URL(string: stringValue),
                let scheme = url.scheme,
@@ -703,14 +705,14 @@ struct JSONNodeView: View {
                 Link(destination: url) {
                     Text(node.displayValue)
                         .foregroundColor(palette.accent)
-                        .lineLimit(wordWrap ? nil : 1)
+                        .formattedLineWrap(wordWrap)
                 }
                 .textSelection(.enabled)
             } else {
                 Text(node.displayValue)
                     .foregroundColor(palette.string)
                     .textSelection(.enabled)
-                    .lineLimit(wordWrap ? nil : 1)
+                    .formattedLineWrap(wordWrap)
             }
         } else if let number = node.value as? NSNumber {
             if number.isBool {
@@ -718,25 +720,32 @@ struct JSONNodeView: View {
                     .foregroundColor(number.boolValue ? palette.boolTrue : palette.boolFalse)
                     .fontWeight(.semibold)
                     .textSelection(.enabled)
-                    .lineLimit(wordWrap ? nil : 1)
+                    .formattedLineWrap(wordWrap)
             } else {
                 Text(node.displayValue)
                     .foregroundColor(palette.number)
                     .textSelection(.enabled)
-                    .lineLimit(wordWrap ? nil : 1)
+                    .formattedLineWrap(wordWrap)
             }
         } else if node.value is NSNull {
             Text(node.displayValue)
                 .foregroundColor(palette.null)
                 .italic()
                 .textSelection(.enabled)
-                .lineLimit(wordWrap ? nil : 1)
+                .formattedLineWrap(wordWrap)
         } else {
             Text(node.displayValue)
                 .foregroundColor(palette.number)
                 .textSelection(.enabled)
-                .lineLimit(wordWrap ? nil : 1)
+                .formattedLineWrap(wordWrap)
         }
+    }
+}
+
+private extension View {
+    func formattedLineWrap(_ wordWrap: Bool) -> some View {
+        lineLimit(wordWrap ? nil : 1)
+            .fixedSize(horizontal: !wordWrap, vertical: false)
     }
 }
 

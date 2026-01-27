@@ -35,22 +35,30 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         textView.isContinuousSpellCheckingEnabled = false
 
         // Configure word-wrap
+        textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = !wordWrap
-        if wordWrap {
-            textView.textContainer?.widthTracksTextView = true
-        }
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = wordWrap ? [.width] : [.height]
+        textView.textContainer?.widthTracksTextView = wordWrap
+        textView.textContainer?.lineBreakMode = wordWrap ? .byWordWrapping : .byClipping
+        textView.textContainer?.containerSize = NSSize(
+            width: wordWrap ? scrollView.contentSize.width : CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
 
         // Configure scrollers
         scrollView.scrollerStyle = .overlay
         scrollView.verticalScroller?.appearance = NSAppearance(named: .vibrantDark)
         scrollView.horizontalScroller?.appearance = NSAppearance(named: .vibrantDark)
 
-        // Show horizontal scroller when word-wrap is disabled
-        scrollView.hasHorizontalScroller = !wordWrap
-        scrollView.autohidesScrollers = true
+        // Always keep the horizontal scroller available; wrapping constrains width so it won't scroll anyway.
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = wordWrap
+        scrollView.horizontalScroller?.isHidden = wordWrap
 
         context.coordinator.textView = textView
         context.coordinator.updateSyntaxHighlighting()
+        updateTextViewSize(textView, in: scrollView, wordWrap: wordWrap)
 
         return scrollView
     }
@@ -65,23 +73,33 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
         }
 
         // Update word-wrap setting
-        let shouldUpdate = textView.isHorizontallyResizable == wordWrap  // Will be true if state needs to change
+        let shouldUpdate = textView.isHorizontallyResizable != !wordWrap ||
+            textView.textContainer?.widthTracksTextView != wordWrap
+        textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = !wordWrap
-        if wordWrap {
-            textView.textContainer?.widthTracksTextView = true
-        } else {
-            textView.textContainer?.widthTracksTextView = false
-        }
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = wordWrap ? [.width] : [.height]
+        textView.textContainer?.widthTracksTextView = wordWrap
+        textView.textContainer?.lineBreakMode = wordWrap ? .byWordWrapping : .byClipping
+        textView.textContainer?.containerSize = NSSize(
+            width: wordWrap ? scrollView.contentSize.width : CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
 
         // Update horizontal scroller visibility
-        scrollView.hasHorizontalScroller = !wordWrap
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = wordWrap
+        scrollView.horizontalScroller?.isHidden = wordWrap
 
         // Trigger layout update if word-wrap setting changed
         if shouldUpdate {
             // Defer layout updates to avoid reentrancy issues
             DispatchQueue.main.async {
-                textView.textContainer?.size = NSZeroSize
-                textView.sizeToFit()
+                textView.textContainer?.containerSize = NSSize(
+                    width: wordWrap ? scrollView.contentSize.width : CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+                updateTextViewSize(textView, in: scrollView, wordWrap: wordWrap)
                 scrollView.needsLayout = true
                 scrollView.display()
             }
@@ -101,10 +119,35 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
             let newLocation = min(selectedRange.location, text.count)
             textView.setSelectedRange(NSRange(location: newLocation, length: 0))
         }
+
+        updateTextViewSize(textView, in: scrollView, wordWrap: wordWrap)
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, palette: palette, onPaste: onPaste)
+    }
+
+    private func updateTextViewSize(_ textView: NSTextView, in scrollView: NSScrollView, wordWrap: Bool) {
+        guard let textContainer = textView.textContainer else { return }
+        guard let layoutManager = textView.layoutManager else { return }
+
+        layoutManager.ensureLayout(for: textContainer)
+
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let inset = textView.textContainerInset
+
+        let contentWidth = max(1, scrollView.contentSize.width)
+        let contentHeight = max(1, scrollView.contentSize.height)
+
+        let desiredHeight = max(contentHeight, ceil(usedRect.height + inset.height * 2 + 24))
+
+        if wordWrap {
+            textView.setFrameSize(NSSize(width: contentWidth, height: desiredHeight))
+            return
+        }
+
+        let desiredWidth = max(contentWidth, ceil(usedRect.width + inset.width * 2 + 24))
+        textView.setFrameSize(NSSize(width: desiredWidth, height: desiredHeight))
     }
 
 	    class Coordinator: NSObject, NSTextViewDelegate {
@@ -1089,30 +1132,45 @@ struct JSONOutputView: View {
                 )
             } else if let rootNode = jsonViewModel.rootNode {
                 ScrollViewReader { proxy in
-                    ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
-                                .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
+                    GeometryReader { geometry in
+                        let axes: Axis.Set = themeSettings.formattedJSONWordWrap ? .vertical : [.vertical, .horizontal]
+                        let scrollIndicatorGutter: CGFloat = 44
+                        let endGutter: CGFloat = themeSettings.formattedJSONWordWrap ? 24 : 96
+                        ScrollView(axes, showsIndicators: true) {
+                            ZStack(alignment: .topLeading) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
+                                        .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
+                                }
+                                .padding(.top, 12)
+                                .padding(.leading, 12)
+                                .padding(.trailing, scrollIndicatorGutter + endGutter)
+                                .padding(.bottom, themeSettings.formattedJSONWordWrap ? 12 : (scrollIndicatorGutter + endGutter))
+                            }
+                            .frame(
+                                minWidth: geometry.size.width,
+                                minHeight: geometry.size.height,
+                                alignment: .topLeading
+                            )
                         }
-                        .frame(maxWidth: themeSettings.formattedJSONWordWrap ? .infinity : nil, alignment: .leading)
-                        .padding(12)
-                    }
-                    .onAppear {
-                        os_log("SCROLL: ScrollView appeared for root node", log: OSLog.default, type: .debug)
-                    }
-                    .background(palette.surface)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
-                    )
-                    .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
-                        guard let targetID else { return }
-                        os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
-                        // Delay scroll to ensure pagination is resolved and views are laid out
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                proxy.scrollTo(targetID, anchor: .center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .onAppear {
+                            os_log("SCROLL: ScrollView appeared for root node", log: OSLog.default, type: .debug)
+                        }
+                        .background(palette.surface)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                        )
+                        .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
+                            guard let targetID else { return }
+                            os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
+                            // Delay scroll to ensure pagination is resolved and views are laid out
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    proxy.scrollTo(targetID, anchor: .center)
+                                }
                             }
                         }
                     }
