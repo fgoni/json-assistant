@@ -1,0 +1,5 @@
+app_identifier("com.coffeedevs.JSON-Assistant")
+team_id("ZKYJ6G9GJP")
+
+# App Store Connect API Key (set via environment variable)
+# Configure APP_STORE_CONNECT_API_KEY_PATH in your shell profile

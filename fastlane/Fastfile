@@ -1,0 +1,84 @@
+default_platform(:mac)
+
+platform :mac do
+  desc "Bump version, build, and upload to App Store Connect"
+  lane :release do |options|
+    # Default to patch if no type specified
+    bump_type = options[:type] || "patch"
+
+    # Get current version
+    current_version = get_version_number(
+      xcodeproj: "json-assistant.xcodeproj",
+      target: "json-assistant"
+    )
+
+    # Bump version based on type
+    if bump_type != "build"
+      increment_version_number(
+        bump_type: bump_type,
+        xcodeproj: "json-assistant.xcodeproj"
+      )
+    end
+
+    # Always increment build number
+    increment_build_number(xcodeproj: "json-assistant.xcodeproj")
+
+    # Get new version info for commit message
+    new_version = get_version_number(
+      xcodeproj: "json-assistant.xcodeproj",
+      target: "json-assistant"
+    )
+    new_build = get_build_number(xcodeproj: "json-assistant.xcodeproj")
+
+    # Build the app
+    build_mac_app(
+      scheme: "json-assistant",
+      clean: true,
+      output_directory: "./build",
+      export_method: "app-store"
+    )
+
+    # Upload to App Store Connect
+    upload_to_app_store(
+      skip_metadata: true,
+      skip_screenshots: true,
+      skip_app_version_update: false,
+      precheck_include_in_app_purchases: false,
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+    )
+
+    # Commit version bump
+    commit_version_bump(
+      xcodeproj: "json-assistant.xcodeproj",
+      message: "chore: bump version to #{new_version} (#{new_build})\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+    )
+
+    # Tag the release
+    add_git_tag(tag: "v#{new_version}")
+
+    UI.success("🚀 Successfully uploaded v#{new_version} (#{new_build}) to App Store Connect!")
+  end
+
+  desc "Build only (no upload)"
+  lane :build do
+    build_mac_app(
+      scheme: "json-assistant",
+      clean: true,
+      output_directory: "./build",
+      export_method: "app-store"
+    )
+    UI.success("✅ Build complete! Archive saved to ./build")
+  end
+
+  desc "Upload existing build to App Store Connect"
+  lane :upload do
+    upload_to_app_store(
+      skip_metadata: true,
+      skip_screenshots: true,
+      skip_app_version_update: false,
+      precheck_include_in_app_purchases: false,
+      pkg: "./build/json-assistant.pkg",
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+    )
+  end
+end
