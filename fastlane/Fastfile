@@ -6,36 +6,53 @@ platform :mac do
     # Default to patch if no type specified
     bump_type = options[:type] || "patch"
 
-    # Get current version
+    # Get current version from project
     current_version = get_version_number(
       xcodeproj: "json-assistant.xcodeproj",
       target: "json-assistant"
     )
 
-    # Bump version based on type
-    if bump_type != "build"
-      increment_version_number(
-        bump_type: bump_type,
-        xcodeproj: "json-assistant.xcodeproj"
-      )
+    # Parse and bump version manually
+    version_parts = current_version.split(".").map(&:to_i)
+    version_parts = [1, 0, 0] if version_parts.length < 3
+
+    case bump_type
+    when "major"
+      version_parts[0] += 1
+      version_parts[1] = 0
+      version_parts[2] = 0
+    when "minor"
+      version_parts[1] += 1
+      version_parts[2] = 0
+    when "patch"
+      version_parts[2] += 1
+    when "build"
+      # Don't change version, only build number
     end
 
-    # Always increment build number
-    increment_build_number(xcodeproj: "json-assistant.xcodeproj")
+    new_version = version_parts.join(".")
 
-    # Get new version info for commit message
-    new_version = get_version_number(
-      xcodeproj: "json-assistant.xcodeproj",
-      target: "json-assistant"
-    )
+    # Update version in project using sed (works reliably)
+    if bump_type != "build"
+      sh("sed -i '' 's/MARKETING_VERSION = #{current_version};/MARKETING_VERSION = #{new_version};/g' ../json-assistant.xcodeproj/project.pbxproj")
+    end
+
+    # Increment build number
+    increment_build_number(xcodeproj: "json-assistant.xcodeproj")
     new_build = get_build_number(xcodeproj: "json-assistant.xcodeproj")
+
+    UI.message("📦 Building v#{new_version} (#{new_build})...")
 
     # Build the app
     build_mac_app(
       scheme: "json-assistant",
       clean: true,
       output_directory: "./build",
-      export_method: "app-store"
+      export_method: "app-store",
+      export_options: {
+        signingStyle: "automatic",
+        provisioningProfiles: {}
+      }
     )
 
     # Upload to App Store Connect
@@ -48,8 +65,8 @@ platform :mac do
     )
 
     # Commit version bump
-    commit_version_bump(
-      xcodeproj: "json-assistant.xcodeproj",
+    git_commit(
+      path: ["json-assistant.xcodeproj/project.pbxproj"],
       message: "chore: bump version to #{new_version} (#{new_build})\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
     )
 
