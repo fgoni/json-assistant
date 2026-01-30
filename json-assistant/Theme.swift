@@ -34,6 +34,27 @@ extension Color {
     }
 }
 
+enum SyntaxTheme: String, CaseIterable, Identifiable {
+    case github = "GitHub"
+    case classic = "Classic"
+    case xcode = "Xcode"
+
+    var id: String { rawValue }
+
+    var displayName: String { rawValue }
+
+    var description: String {
+        switch self {
+        case .github:
+            return "GitHub-style JSON colors (blue strings)"
+        case .classic:
+            return "Original JSON Assistant colors"
+        case .xcode:
+            return "Xcode-like JSON colors"
+        }
+    }
+}
+
 struct ThemePalette {
     let background: Color
     let surface: Color
@@ -52,11 +73,107 @@ struct ThemePalette {
     let accent: Color
     let selection: Color
     
+    private struct SyntaxPalette {
+        let key: Color
+        let string: Color
+        let number: Color
+        let boolTrue: Color
+        let boolFalse: Color
+        let null: Color
+        let punctuation: Color
+    }
+
     static func palette(for scheme: ColorScheme) -> ThemePalette {
-        scheme == .dark ? .dark : .light
+        palette(for: scheme, syntaxTheme: .github)
+    }
+
+    static func palette(for scheme: ColorScheme, syntaxTheme: SyntaxTheme) -> ThemePalette {
+        let base = scheme == .dark ? Self.classicDark : Self.classicLight
+        guard syntaxTheme != .classic else { return base }
+
+        let syntax = syntaxPalette(for: scheme, theme: syntaxTheme, fallback: base)
+        return base.applying(syntax: syntax)
     }
     
-    static let dark = ThemePalette(
+    private func applying(syntax: SyntaxPalette) -> ThemePalette {
+        ThemePalette(
+            background: background,
+            surface: surface,
+            text: text,
+            muted: muted,
+            placeholderText: placeholderText,
+            buttonText: buttonText,
+            accentButtonText: accentButtonText,
+            key: syntax.key,
+            string: syntax.string,
+            number: syntax.number,
+            boolTrue: syntax.boolTrue,
+            boolFalse: syntax.boolFalse,
+            null: syntax.null,
+            punctuation: syntax.punctuation,
+            accent: accent,
+            selection: selection
+        )
+    }
+
+    private static func syntaxPalette(for scheme: ColorScheme, theme: SyntaxTheme, fallback: ThemePalette) -> SyntaxPalette {
+        switch theme {
+        case .classic:
+            return SyntaxPalette(
+                key: fallback.key,
+                string: fallback.string,
+                number: fallback.number,
+                boolTrue: fallback.boolTrue,
+                boolFalse: fallback.boolFalse,
+                null: fallback.null,
+                punctuation: fallback.punctuation
+            )
+        case .github:
+            if scheme == .dark {
+                return SyntaxPalette(
+                    key: Color(hex: "#79C0FF"),
+                    string: Color(hex: "#A5D6FF"),
+                    number: Color(hex: "#79C0FF"),
+                    boolTrue: Color(hex: "#D2A8FF"),
+                    boolFalse: Color(hex: "#D2A8FF"),
+                    null: Color(hex: "#D2A8FF"),
+                    punctuation: fallback.punctuation
+                )
+            }
+            return SyntaxPalette(
+                key: Color(hex: "#0550AE"),
+                string: Color(hex: "#0A3069"),
+                number: Color(hex: "#0550AE"),
+                boolTrue: Color(hex: "#8250DF"),
+                boolFalse: Color(hex: "#8250DF"),
+                null: Color(hex: "#8250DF"),
+                punctuation: fallback.punctuation
+            )
+        case .xcode:
+            if scheme == .dark {
+                return SyntaxPalette(
+                    key: Color(hex: "#67B7A4"),
+                    string: Color(hex: "#FC6A5D"),
+                    number: Color(hex: "#D0BF69"),
+                    boolTrue: Color(hex: "#D0A8FF"),
+                    boolFalse: Color(hex: "#D0A8FF"),
+                    null: Color(hex: "#D0A8FF"),
+                    punctuation: fallback.punctuation
+                )
+            }
+            return SyntaxPalette(
+                key: Color(hex: "#0B4F79"),
+                string: Color(hex: "#C41A16"),
+                number: Color(hex: "#1C00CF"),
+                boolTrue: Color(hex: "#AA0D91"),
+                boolFalse: Color(hex: "#AA0D91"),
+                null: Color(hex: "#AA0D91"),
+                punctuation: fallback.punctuation
+            )
+        }
+    }
+
+    private static let classicDark = ThemePalette(
         background: Color(hex: "#0B0F14"),
         surface: Color(hex: "#111827"),
         text: Color(hex: "#E5E7EB"),
@@ -75,7 +192,7 @@ struct ThemePalette {
         selection: Color(hex: "#1F2937")
     )
     
-    static let light = ThemePalette(
+    private static let classicLight = ThemePalette(
         background: Color(hex: "#F8FAFC"),
         surface: Color(hex: "#FFFFFF"),
         text: Color(hex: "#0F172A"),
@@ -152,10 +269,17 @@ class ThemeSettings: ObservableObject {
     static let formattedJSONFontSizeDefaultsKey = "formattedJSONFontSize"
     static let requestJSONWordWrapDefaultsKey = "requestJSONWordWrap"
     static let formattedJSONWordWrapDefaultsKey = "formattedJSONWordWrap"
+    static let syntaxThemeDefaultsKey = "syntaxTheme"
 
     @Published var selectedTheme: ThemeMode {
         didSet {
             UserDefaults.standard.set(selectedTheme.rawValue, forKey: "themeMode")
+        }
+    }
+
+    @Published var syntaxTheme: SyntaxTheme {
+        didSet {
+            UserDefaults.standard.set(syntaxTheme.rawValue, forKey: Self.syntaxThemeDefaultsKey)
         }
     }
 
@@ -209,6 +333,9 @@ class ThemeSettings: ObservableObject {
     init() {
         let savedTheme = UserDefaults.standard.string(forKey: "themeMode") ?? ThemeMode.system.rawValue
         self.selectedTheme = ThemeMode(rawValue: savedTheme) ?? .system
+
+        let savedSyntaxTheme = UserDefaults.standard.string(forKey: Self.syntaxThemeDefaultsKey) ?? SyntaxTheme.github.rawValue
+        self.syntaxTheme = SyntaxTheme(rawValue: savedSyntaxTheme) ?? .github
 
         let savedUIFontSize = UserDefaults.standard.double(forKey: Self.uiFontSizeDefaultsKey)
         self.uiFontSize = savedUIFontSize > 0 ? Self.clamp(savedUIFontSize) : Self.defaultUIFontSize

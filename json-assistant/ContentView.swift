@@ -10,6 +10,7 @@ import AppKit
 struct SyntaxHighlightedTextEditor: NSViewRepresentable {
     @Binding var text: String
     let palette: ThemePalette
+    let paletteID: String
     let fontSize: CGFloat
     let wordWrap: Bool
     let onPaste: (String) -> Void
@@ -65,6 +66,12 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
 
 	    func updateNSView(_ scrollView: NSScrollView, context: Context) {
 	        guard let textView = scrollView.documentView as? NSTextView else { return }
+        if context.coordinator.paletteID != paletteID {
+            context.coordinator.palette = palette
+            context.coordinator.paletteID = paletteID
+            textView.textColor = NSColor(palette.text)
+            context.coordinator.updateSyntaxHighlighting()
+        }
         if textView.font?.pointSize != fontSize {
             textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         }
@@ -124,7 +131,7 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, palette: palette, onPaste: onPaste)
+        Coordinator(text: $text, palette: palette, paletteID: paletteID, onPaste: onPaste)
     }
 
     private func updateTextViewSize(_ textView: NSTextView, in scrollView: NSScrollView, wordWrap: Bool) {
@@ -152,15 +159,17 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
 
 	    class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
-        let palette: ThemePalette
+        var palette: ThemePalette
+        var paletteID: String
         let onPaste: (String) -> Void
         weak var textView: NSTextView?
         private var highlightWorkItem: DispatchWorkItem?
         private let highlightQueue = DispatchQueue(label: "com.jsonassistant.highlighting", qos: .userInitiated)
 
-        init(text: Binding<String>, palette: ThemePalette, onPaste: @escaping (String) -> Void) {
+        init(text: Binding<String>, palette: ThemePalette, paletteID: String, onPaste: @escaping (String) -> Void) {
             self._text = text
             self.palette = palette
+            self.paletteID = paletteID
             self.onPaste = onPaste
         }
 
@@ -247,7 +256,6 @@ struct SyntaxHighlightedTextEditor: NSViewRepresentable {
                 if char == "\"" {
                     if let endIndex = findStringEnd(in: text, from: index) {
                         let range = NSRange(startIndex..<endIndex, in: text)
-                        let stringContent = String(text[startIndex...endIndex])
 
                         // Check if this is a key (followed by a colon)
                         var checkIndex = endIndex
@@ -360,9 +368,17 @@ struct ContentView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     @ObservedObject var themeSettings: ThemeSettings
 
+    private var effectiveColorScheme: ColorScheme {
+        themeSettings.getColorScheme(systemScheme: systemColorScheme) ?? systemColorScheme
+    }
+
     private var palette: ThemePalette {
-        let effectiveColorScheme = themeSettings.getColorScheme(systemScheme: systemColorScheme) ?? systemColorScheme
-        return ThemePalette.palette(for: effectiveColorScheme)
+        ThemePalette.palette(for: effectiveColorScheme, syntaxTheme: themeSettings.syntaxTheme)
+    }
+
+    private var requestEditorPaletteID: String {
+        let schemeID = effectiveColorScheme == .dark ? "dark" : "light"
+        return "\(schemeID)-\(themeSettings.syntaxTheme.rawValue)"
     }
 
     private var windowTitle: String {
@@ -384,7 +400,12 @@ struct ContentView: View {
 	                    .background(palette.surface)
 
 	                HSplitView {
-	                    JSONInputView(jsonViewModel: jsonViewModel, themeSettings: themeSettings, palette: palette)
+	                    JSONInputView(
+                            jsonViewModel: jsonViewModel,
+                            themeSettings: themeSettings,
+                            palette: palette,
+                            editorPaletteID: requestEditorPaletteID
+                        )
 	                        .frame(minWidth: 280)
 	                    JSONOutputView(jsonViewModel: jsonViewModel, themeSettings: themeSettings, palette: palette)
 	                        .frame(minWidth: 360)
@@ -927,6 +948,7 @@ struct JSONInputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     @ObservedObject var themeSettings: ThemeSettings
     let palette: ThemePalette
+    let editorPaletteID: String
 
     var body: some View {
         VStack(spacing: 12) {
@@ -961,6 +983,7 @@ struct JSONInputView: View {
             SyntaxHighlightedTextEditor(
                 text: $jsonViewModel.inputJSON,
                 palette: palette,
+                paletteID: editorPaletteID,
                 fontSize: CGFloat(themeSettings.requestJSONFontSize),
                 wordWrap: themeSettings.requestJSONWordWrap,
                 onPaste: { pastedText in
@@ -1312,202 +1335,300 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
 
     private var palette: ThemePalette {
-        ThemePalette.palette(for: themeSettings.getColorScheme(systemScheme: systemColorScheme) ?? systemColorScheme)
+        ThemePalette.palette(
+            for: themeSettings.getColorScheme(systemScheme: systemColorScheme) ?? systemColorScheme,
+            syntaxTheme: themeSettings.syntaxTheme
+        )
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Settings")
-                    .font(.themedUI(size: 16))
-                    .fontWeight(.semibold)
-                    .foregroundColor(palette.text)
-
-                Divider()
-                    .background(palette.punctuation.opacity(0.2))
-            }
-            .padding(12)
-
-            // Content
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Theme Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Appearance")
-                            .font(.themedUI(size: 13))
-                            .fontWeight(.semibold)
-                            .foregroundColor(palette.text)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(ThemeMode.allCases) { mode in
-                                HStack(spacing: 12) {
-                                    Image(systemName: themeSettings.selectedTheme == mode ? "checkmark.circle.fill" : "circle")
-                                        .font(.themedUI(size: 14))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(
-                                            themeSettings.selectedTheme == mode
-                                            ? palette.accent
-                                            : palette.muted
-                                        )
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(mode.displayName)
-                                            .font(.themedUI(size: 12))
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(palette.text)
-
-                                        if mode == .system {
-                                            Text("Follow device settings")
-                                                .font(.themedUI(size: 11))
-                                                .foregroundColor(palette.muted)
-                                        }
-                                    }
-
-                                    Spacer()
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(
-                                            themeSettings.selectedTheme == mode
-                                            ? palette.accent.opacity(0.1)
-                                            : Color.clear
-                                        )
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(
-                                            themeSettings.selectedTheme == mode
-                                            ? palette.accent.opacity(0.3)
-                                            : Color.clear,
-                                            lineWidth: 1
-                                        )
-                                )
-                                .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        themeSettings.selectedTheme = mode
-                                    }
-                                }
-                            }
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(palette.surface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Font Sizes")
-                            .font(.themedUI(size: 13))
-                            .fontWeight(.semibold)
-                            .foregroundColor(palette.text)
-
-                        VStack(alignment: .leading, spacing: 14) {
-                            fontSizeRow(
-                                title: "UI",
-                                value: $themeSettings.uiFontSize,
-                                hint: "Scales interface text"
-                            )
-
-                            fontSizeRow(
-                                title: "Request JSON",
-                                value: $themeSettings.requestJSONFontSize,
-                                hint: "⌘⇧= / ⌘⇧-"
-                            )
-
-                            fontSizeRow(
-                                title: "Formatted JSON",
-                                value: $themeSettings.formattedJSONFontSize,
-                                hint: "⌘= / ⌘-"
-                            )
-
-                            HStack {
-                                Spacer()
-                                Button("Reset Font Sizes") {
-                                    themeSettings.resetFontSizes()
-                                }
-                                .buttonStyle(.plain)
-                                .font(.themedUI(size: 12))
-                                .foregroundColor(palette.accent)
-                            }
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(palette.surface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Text Display")
-                            .font(.themedUI(size: 13))
-                            .fontWeight(.semibold)
-                            .foregroundColor(palette.text)
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            wordWrapToggle(
-                                title: "Request JSON",
-                                value: $themeSettings.requestJSONWordWrap,
-                                description: "Wrap long lines in request view"
-                            )
-
-                            wordWrapToggle(
-                                title: "Formatted JSON",
-                                value: $themeSettings.formattedJSONWordWrap,
-                                description: "Wrap long lines in formatted view"
-                            )
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(palette.surface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
-                        )
-                    }
-
-                    Spacer()
-                }
-                .padding(12)
-            }
-
-            // Footer
-            VStack(spacing: 12) {
-                Divider()
-                    .background(palette.punctuation.opacity(0.2))
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .font(.themedUI(size: 12))
-                    .fontWeight(.semibold)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 16)
-                    .background(palette.accent)
-                    .foregroundColor(palette.accentButtonText)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .buttonStyle(.plain)
-                }
-                .padding(12)
-            }
+            settingsHeader
+            ScrollView { settingsContent }
+            settingsFooter
         }
         .frame(minWidth: 400, minHeight: 300)
         .background(palette.background)
+    }
+
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Settings")
+                .font(.themedUI(size: 16))
+                .fontWeight(.semibold)
+                .foregroundColor(palette.text)
+
+            Divider()
+                .background(palette.punctuation.opacity(0.2))
+        }
+        .padding(12)
+    }
+
+    private var settingsFooter: some View {
+        VStack(spacing: 12) {
+            Divider()
+                .background(palette.punctuation.opacity(0.2))
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .font(.themedUI(size: 12))
+                .fontWeight(.semibold)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 16)
+                .background(palette.accent)
+                .foregroundColor(palette.accentButtonText)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+        }
+    }
+
+    private var settingsContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            appearanceSection
+            fontSizesSection
+            textDisplaySection
+            Spacer()
+        }
+        .padding(12)
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Appearance")
+                .font(.themedUI(size: 13))
+                .fontWeight(.semibold)
+                .foregroundColor(palette.text)
+
+            themeModeCard
+            syntaxThemeCard
+        }
+    }
+
+    private var themeModeCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(ThemeMode.allCases) { mode in
+                themeModeRow(mode: mode)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func themeModeRow(mode: ThemeMode) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: themeSettings.selectedTheme == mode ? "checkmark.circle.fill" : "circle")
+                .font(.themedUI(size: 14))
+                .fontWeight(.semibold)
+                .foregroundColor(
+                    themeSettings.selectedTheme == mode
+                    ? palette.accent
+                    : palette.muted
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mode.displayName)
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+
+                if mode == .system {
+                    Text("Follow device settings")
+                        .font(.themedUI(size: 11))
+                        .foregroundColor(palette.muted)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    themeSettings.selectedTheme == mode
+                    ? palette.accent.opacity(0.1)
+                    : Color.clear
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    themeSettings.selectedTheme == mode
+                    ? palette.accent.opacity(0.3)
+                    : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                themeSettings.selectedTheme = mode
+            }
+        }
+    }
+
+    private var syntaxThemeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Syntax Highlighting")
+                .font(.themedUI(size: 12))
+                .fontWeight(.semibold)
+                .foregroundColor(palette.text)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(SyntaxTheme.allCases) { theme in
+                    syntaxThemeRow(theme: theme)
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func syntaxThemeRow(theme: SyntaxTheme) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: themeSettings.syntaxTheme == theme ? "checkmark.circle.fill" : "circle")
+                .font(.themedUI(size: 14))
+                .fontWeight(.semibold)
+                .foregroundColor(
+                    themeSettings.syntaxTheme == theme
+                    ? palette.accent
+                    : palette.muted
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(theme.displayName)
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+                Text(theme.description)
+                    .font(.themedUI(size: 11))
+                    .foregroundColor(palette.muted)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    themeSettings.syntaxTheme == theme
+                    ? palette.accent.opacity(0.1)
+                    : Color.clear
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    themeSettings.syntaxTheme == theme
+                    ? palette.accent.opacity(0.3)
+                    : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                themeSettings.syntaxTheme = theme
+            }
+        }
+    }
+
+    private var fontSizesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Font Sizes")
+                .font(.themedUI(size: 13))
+                .fontWeight(.semibold)
+                .foregroundColor(palette.text)
+
+            VStack(alignment: .leading, spacing: 14) {
+                fontSizeRow(
+                    title: "UI",
+                    value: $themeSettings.uiFontSize,
+                    hint: "Scales interface text"
+                )
+
+                fontSizeRow(
+                    title: "Request JSON",
+                    value: $themeSettings.requestJSONFontSize,
+                    hint: "⌘⇧= / ⌘⇧-"
+                )
+
+                fontSizeRow(
+                    title: "Formatted JSON",
+                    value: $themeSettings.formattedJSONFontSize,
+                    hint: "⌘= / ⌘-"
+                )
+
+                HStack {
+                    Spacer()
+                    Button("Reset Font Sizes") {
+                        themeSettings.resetFontSizes()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.themedUI(size: 12))
+                    .foregroundColor(palette.accent)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(palette.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
+    private var textDisplaySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Text Display")
+                .font(.themedUI(size: 13))
+                .fontWeight(.semibold)
+                .foregroundColor(palette.text)
+
+            VStack(alignment: .leading, spacing: 12) {
+                wordWrapToggle(
+                    title: "Request JSON",
+                    value: $themeSettings.requestJSONWordWrap,
+                    description: "Wrap long lines in request view"
+                )
+
+                wordWrapToggle(
+                    title: "Formatted JSON",
+                    value: $themeSettings.formattedJSONWordWrap,
+                    description: "Wrap long lines in formatted view"
+                )
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(palette.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(palette.punctuation.opacity(0.2), lineWidth: 1)
+            )
+        }
     }
 
 	    @ViewBuilder
