@@ -2,539 +2,6 @@ import SwiftUI
 import Foundation
 import os
 
-class OrderedDictionary {
-    private var keys: [String] = []
-    private var dict: [String: Any] = [:]
-    
-    subscript(key: String) -> Any? {
-        get { return dict[key] }
-        set {
-            if newValue == nil {
-                dict.removeValue(forKey: key)
-                keys.removeAll { $0 == key }
-            } else {
-                if dict[key] == nil {
-                    keys.append(key)
-                }
-                dict[key] = newValue
-            }
-        }
-    }
-    
-    var orderedPairs: [(String, Any)] {
-        return keys.map { ($0, dict[$0]!) }
-    }
-}
-
-enum OrderedJSONParserError: LocalizedError {
-    case unexpectedCharacter(Character, Int)
-    case unexpectedEndOfInput
-    case invalidLiteral(String, Int)
-    case invalidNumber(String, Int)
-    
-    var errorDescription: String? {
-        switch self {
-        case .unexpectedCharacter(let character, let position):
-            return "Unexpected character '\(character)' at position \(position)."
-        case .unexpectedEndOfInput:
-            return "Unexpected end of JSON input."
-        case .invalidLiteral(let literal, let position):
-            return "Invalid literal '\(literal)' at position \(position)."
-        case .invalidNumber(let literal, let position):
-            return "Invalid number '\(literal)' at position \(position)."
-        }
-    }
-}
-
-struct OrderedJSONParser {
-    private let input: String
-    private var index: String.Index
-    
-    init(_ input: String) {
-        self.input = input
-        self.index = input.startIndex
-    }
-    
-    mutating func parse() throws -> Any {
-        skipWhitespace()
-        guard !isAtEnd else {
-            throw OrderedJSONParserError.unexpectedEndOfInput
-        }
-        
-        let value = try parseValue()
-        skipWhitespace()
-        if !isAtEnd {
-            let character = currentCharacter ?? Character(" ")
-            throw OrderedJSONParserError.unexpectedCharacter(character, position)
-        }
-        return value
-    }
-    
-    private mutating func parseValue() throws -> Any {
-        skipWhitespace()
-        guard let character = currentCharacter else {
-            throw OrderedJSONParserError.unexpectedEndOfInput
-        }
-        
-        switch character {
-        case "{": return try parseObject()
-        case "[": return try parseArray()
-        case "\"": return try parseString()
-        case "-", "0"..."9": return try parseNumber()
-        case "t", "f", "n": return try parseLiteral()
-        default:
-            throw OrderedJSONParserError.unexpectedCharacter(character, position)
-        }
-    }
-    
-    private mutating func parseObject() throws -> OrderedDictionary {
-        try expect("{")
-        skipWhitespace()
-        
-        let dictionary = OrderedDictionary()
-        if match("}") {
-            return dictionary
-        }
-        
-        repeat {
-            skipWhitespace()
-            let key = try parseString()
-            skipWhitespace()
-            try expect(":")
-            let value = try parseValue()
-            dictionary[key] = value
-            skipWhitespace()
-        } while match(",")
-        
-        try expect("}")
-        return dictionary
-    }
-    
-    private mutating func parseArray() throws -> [Any] {
-        try expect("[")
-        skipWhitespace()
-        
-        var array: [Any] = []
-        if match("]") {
-            return array
-        }
-        
-        repeat {
-            let value = try parseValue()
-            array.append(value)
-            skipWhitespace()
-        } while match(",")
-        
-        try expect("]")
-        return array
-    }
-    
-    private mutating func parseString() throws -> String {
-        try expect("\"")
-        var result = ""
-        
-        while !isAtEnd {
-            guard let character = currentCharacter else {
-                throw OrderedJSONParserError.unexpectedEndOfInput
-            }
-            
-            if character == "\"" {
-                advance()
-                return result
-            }
-            
-            if character == "\\" {
-                advance()
-                guard let escaped = currentCharacter else {
-                    throw OrderedJSONParserError.unexpectedEndOfInput
-                }
-                
-                switch escaped {
-                case "\"": result.append("\"")
-                case "\\": result.append("\\")
-                case "/": result.append("/")
-                case "b": result.append("\u{08}")
-                case "f": result.append("\u{0C}")
-                case "n": result.append("\n")
-                case "r": result.append("\r")
-                case "t": result.append("\t")
-                case "u":
-                    let scalar = try parseUnicodeScalar()
-                    result.append(Character(scalar))
-                    continue
-                default:
-                    throw OrderedJSONParserError.invalidLiteral("\\\(escaped)", position)
-                }
-                advance()
-                continue
-            }
-            
-            result.append(character)
-            advance()
-        }
-        
-        throw OrderedJSONParserError.unexpectedEndOfInput
-    }
-    
-    private mutating func parseUnicodeScalar() throws -> UnicodeScalar {
-        advance() // move past 'u'
-        var hex = ""
-        for _ in 0..<4 {
-            guard let character = currentCharacter else {
-                throw OrderedJSONParserError.unexpectedEndOfInput
-            }
-            guard character.isHexDigit else {
-                throw OrderedJSONParserError.invalidLiteral(String(character), position)
-            }
-            hex.append(character)
-            advance()
-        }
-        
-        guard let value = UInt32(hex, radix: 16), let scalar = UnicodeScalar(value) else {
-            throw OrderedJSONParserError.invalidLiteral("\\u\(hex)", position)
-        }
-        return scalar
-    }
-    
-    private mutating func parseLiteral() throws -> Any {
-        if match(string: "true") {
-            return NSNumber(value: true)
-        }
-        if match(string: "false") {
-            return NSNumber(value: false)
-        }
-        if match(string: "null") {
-            return NSNull()
-        }
-        let character = currentCharacter ?? Character(" ")
-        throw OrderedJSONParserError.invalidLiteral(String(character), position)
-    }
-    
-    private mutating func parseNumber() throws -> Any {
-        let start = index
-        var tempIndex = index
-        let allowedCharacters = CharacterSet(charactersIn: "-+0123456789.eE")
-        
-        while tempIndex < input.endIndex,
-              let scalar = input[tempIndex].unicodeScalars.first,
-              allowedCharacters.contains(scalar) {
-            tempIndex = input.index(after: tempIndex)
-        }
-        
-        let numberString = String(input[start..<tempIndex])
-        guard !numberString.isEmpty else {
-            throw OrderedJSONParserError.invalidNumber(numberString, position)
-        }
-        
-        let wrapped = "[\(numberString)]"
-        guard
-            let data = wrapped.data(using: .utf8),
-            let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [Any],
-            let value = parsed.first
-        else {
-            throw OrderedJSONParserError.invalidNumber(numberString, position)
-        }
-        
-        index = tempIndex
-        return value
-    }
-    
-    private mutating func expect(_ character: Character) throws {
-        guard currentCharacter == character else {
-            let found = currentCharacter ?? Character(" ")
-            throw OrderedJSONParserError.unexpectedCharacter(found, position)
-        }
-        advance()
-    }
-    
-    private mutating func match(_ character: Character) -> Bool {
-        if currentCharacter == character {
-            advance()
-            return true
-        }
-        return false
-    }
-    
-    private mutating func match(string: String) -> Bool {
-        var tempIndex = index
-        for character in string {
-            if tempIndex == input.endIndex || input[tempIndex] != character {
-                return false
-            }
-            tempIndex = input.index(after: tempIndex)
-        }
-        index = tempIndex
-        return true
-    }
-    
-    private mutating func advance() {
-        if !isAtEnd {
-            index = input.index(after: index)
-        }
-    }
-    
-    private mutating func skipWhitespace() {
-        while let character = currentCharacter, character.isWhitespace {
-            advance()
-        }
-    }
-    
-    private var currentCharacter: Character? {
-        guard !isAtEnd else { return nil }
-        return input[index]
-    }
-    
-    private var position: Int {
-        input.distance(from: input.startIndex, to: index) + 1
-    }
-    
-    private var isAtEnd: Bool {
-        index >= input.endIndex
-    }
-}
-
-enum OrderedJSONFormatter {
-    static func prettyPrinted(_ value: Any, indent: Int = 0) -> String {
-        return format(value, indentLevel: indent)
-    }
-    
-    private static func format(_ value: Any, indentLevel: Int) -> String {
-        let indentUnit = "    "
-        let currentIndent = String(repeating: indentUnit, count: indentLevel)
-        let nextIndentLevel = indentLevel + 1
-        let nextIndent = String(repeating: indentUnit, count: nextIndentLevel)
-        
-        switch value {
-        case let dictionary as OrderedDictionary:
-            let pairs = dictionary.orderedPairs
-            guard !pairs.isEmpty else { return "{}" }
-            var lines = ["{"]
-            for (index, pair) in pairs.enumerated() {
-                let formattedValue = format(pair.1, indentLevel: nextIndentLevel)
-                var line = "\(nextIndent)\"\(escape(pair.0))\": \(formattedValue)"
-                if index < pairs.count - 1 {
-                    line += ","
-                }
-                lines.append(line)
-            }
-            lines.append("\(currentIndent)}")
-            return lines.joined(separator: "\n")
-            
-        case let array as [Any]:
-            guard !array.isEmpty else { return "[]" }
-            var lines = ["["]
-            for (index, element) in array.enumerated() {
-                var line = "\(nextIndent)\(format(element, indentLevel: nextIndentLevel))"
-                if index < array.count - 1 {
-                    line += ","
-                }
-                lines.append(line)
-            }
-            lines.append("\(currentIndent)]")
-            return lines.joined(separator: "\n")
-            
-        case let string as String:
-            return "\"\(escape(string))\""
-            
-        case let number as NSNumber:
-            if number.isBool {
-                return number.boolValue ? "true" : "false"
-            }
-            return number.stringValue
-            
-        case _ as NSNull:
-            return "null"
-            
-        case let bool as Bool:
-            return bool ? "true" : "false"
-            
-        case let double as Double:
-            return NSNumber(value: double).stringValue
-            
-        case let int as Int:
-            return "\(int)"
-            
-        default:
-            return "\"\(escape(String(describing: value)))\""
-        }
-    }
-    
-    private static func escape(_ string: String) -> String {
-        var escaped = ""
-        for character in string {
-            switch character {
-            case "\"": escaped.append("\\\"")
-            case "\\": escaped.append("\\\\")
-            case "\u{08}": escaped.append("\\b")
-            case "\u{0C}": escaped.append("\\f")
-            case "\n": escaped.append("\\n")
-            case "\r": escaped.append("\\r")
-            case "\t": escaped.append("\\t")
-            default:
-                if character.unicodeScalars.allSatisfy({ $0.value < 0x20 }) {
-                    for scalar in character.unicodeScalars {
-                        let value = String(format: "%04X", scalar.value)
-                        escaped.append("\\u\(value)")
-                    }
-                } else {
-                    escaped.append(character)
-                }
-            }
-        }
-        return escaped
-    }
-}
-
-class JSONNode: Identifiable, ObservableObject {
-    private static let maxDepth = 50
-    private static let maxNodes = 5000
-    private static var nodeCount = 0
-    private static var parseStartTime: Date?
-    private static var valueAccessCount = 0
-
-    let id = UUID()
-    let key: String
-    let isRoot: Bool
-    let depth: Int
-    @Published var value: Any
-    @Published var isExpanded: Bool = false
-    @Published var children: [JSONNode] = []
-    @Published var isFullyLoaded: Bool = false
-
-    init(key: String, value: Any, isRoot: Bool = false, depth: Int = 0) {
-        self.key = key
-        self.isRoot = isRoot
-        self.value = value
-        self.depth = depth
-        JSONNode.nodeCount += 1
-
-        if isRoot {
-            JSONNode.nodeCount = 1
-            JSONNode.valueAccessCount = 0
-            JSONNode.parseStartTime = Date()
-            os_log("JSONNode: ===== PARSE START =====", log: OSLog.default, type: .debug)
-            os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
-        }
-
-        // Hardline check every 100 nodes
-        if JSONNode.nodeCount % 100 == 0 {
-            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
-            os_log("JSONNode: Checkpoint - %d nodes created in %.2f seconds (accesses: %d)",
-                   log: OSLog.default, type: .info, JSONNode.nodeCount, elapsed, JSONNode.valueAccessCount)
-        }
-
-        if JSONNode.nodeCount > Self.maxNodes {
-            os_log("JSONNode: CRITICAL - Max nodes exceeded (%d), aborting parse", log: OSLog.default, type: .error, JSONNode.nodeCount)
-            return
-        }
-
-        parseValue(value, currentDepth: depth)
-
-        if isRoot {
-            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
-            os_log("JSONNode: Finished parsing. Total: %d nodes, %d value accesses in %.2f seconds",
-                   log: OSLog.default, type: .debug, JSONNode.nodeCount, JSONNode.valueAccessCount, elapsed)
-            os_log("JSONNode: ===== PARSE END =====", log: OSLog.default, type: .debug)
-        }
-    }
-
-    private func parseValue(_ value: Any, currentDepth: Int) {
-        // Prevent infinite recursion beyond max depth
-        guard currentDepth < Self.maxDepth else {
-            os_log("JSONNode: Max depth (%d) reached", log: OSLog.default, type: .debug, Self.maxDepth)
-            return
-        }
-
-        // Emergency stop if we exceed max nodes
-        guard JSONNode.nodeCount <= Self.maxNodes else {
-            return
-        }
-
-        switch value {
-        case let dict as OrderedDictionary:
-            let pairs = dict.orderedPairs
-            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
-            // Only log large dictionaries that might indicate issues
-            if pairs.count > 100 {
-                os_log("JSONNode: Large OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .info, pairs.count, currentDepth)
-            }
-
-        case let dict as [String: Any]:
-            // Check for circular reference
-            if dict.count > 100 {
-                os_log("JSONNode: Large dictionary (%d keys) at depth %d - potential circular structure", log: OSLog.default, type: .error, dict.count, currentDepth)
-            }
-            let ordered = OrderedDictionary()
-            for (key, val) in dict {
-                ordered[key] = val
-            }
-            let pairs = ordered.orderedPairs
-            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
-
-        case let array as [Any]:
-            // Limit array children to prevent massive expansion
-            let arrayCount = array.count
-            let limitedArray = arrayCount > 1000 ? Array(array.prefix(1000)) : array
-            if arrayCount > 1000 {
-                os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, arrayCount)
-            }
-            children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1) }
-
-        default:
-            break
-        }
-    }
-    
-    var displayValue: String {
-        if !children.isEmpty { return "" }
-        switch value {
-        case is OrderedDictionary, is [String: Any]:
-            return "Object"
-        case is [Any]:
-            return "Array"
-        case let stringValue as String: return "\"\(stringValue)\""
-        case is NSNull: return "null"
-        case let number as NSNumber:
-            return number.isBool ? (number.boolValue ? "true" : "false") : number.stringValue
-        default: return "\(value)"
-        }
-    }
-    
-    var typeDescription: String {
-        return JSONNode.describeType(of: value)
-    }
-    
-    static func describeType(of value: Any) -> String {
-        switch value {
-        case is OrderedDictionary, is [String: Any]:
-            return "Object"
-        case is [Any]:
-            return "Array"
-        case let number as NSNumber:
-            return number.isBool ? "Boolean" : "Number"
-        case is String:
-            return "String"
-        case is NSNull:
-            return "Null"
-        case is Bool:
-            return "Boolean"
-        default:
-            return String(describing: type(of: value))
-        }
-    }
-}
-
-extension NSNumber {
-    fileprivate var isBool: Bool {
-        let boolID = CFBooleanGetTypeID()
-        return CFGetTypeID(self) == boolID
-    }
-}
-
-enum ValueType {
-    case string, number, bool, null, complex, other
-}
-
 struct CollapsibleJSONView: View {
     let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
@@ -790,8 +257,10 @@ class JSONViewModel: ObservableObject {
     private var isSearchIndexBuilding = false
     private var expansionWorkItem: DispatchWorkItem?
     private let expansionQueue = DispatchQueue(label: "com.json-assistant.expansion", qos: .userInitiated)
+    private let persistenceService: JSONPersistenceService
 
-    init() {
+    init(persistenceService: JSONPersistenceService = JSONPersistenceService()) {
+        self.persistenceService = persistenceService
         loadSavedJSONs()
     }
 
@@ -899,16 +368,11 @@ class JSONViewModel: ObservableObject {
     }
 
     func parseAndSaveJSON(_ jsonString: String) {
-        parseJSON(jsonString)
-        if errorMessage == nil && !jsonString.isEmpty {
-            if let saved = saveJSON(jsonString) {
-                selectedJSONID = saved.id
-            }
-        }
+        parseJSON(jsonString, saveOnSuccess: true)
     }
 
 
-    func parseJSON(_ jsonString: String, autoExpand: Bool = true) {
+    func parseJSON(_ jsonString: String, autoExpand: Bool = true, saveOnSuccess: Bool = false) {
         guard !jsonString.isEmpty else {
             parseWorkItem?.cancel()
             DispatchQueue.main.async {
@@ -935,18 +399,18 @@ class JSONViewModel: ObservableObject {
         if !autoExpand {
             parseWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                self?.performParsing(jsonString, autoExpand: autoExpand)
+                self?.performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess)
             }
             parseWorkItem = workItem
             DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3, execute: workItem)
         } else {
             // Immediate parsing for beautify/paste operations
             parseWorkItem?.cancel()
-            performParsing(jsonString, autoExpand: autoExpand)
+            performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess)
         }
     }
 
-    private func performParsing(_ jsonString: String, autoExpand: Bool) {
+    private func performParsing(_ jsonString: String, autoExpand: Bool, saveOnSuccess: Bool) {
         do {
             var parser = OrderedJSONParser(jsonString)
             let parsedValue = try parser.parse()
@@ -972,7 +436,6 @@ class JSONViewModel: ObservableObject {
                     guard let self = self else { return }
                     self.rootNode = rootNode
                     self.isLoadingJSON = false
-                    self.persistParsedJSONIfNeeded(originalJSON: jsonString, autoExpand: autoExpand)
                     self.applyFormattedSearchIfNeeded()
 
                     if autoExpand {
@@ -984,6 +447,10 @@ class JSONViewModel: ObservableObject {
                             // For large JSON, only expand the root
                             self.setExpanded(true, for: rootNode.id)
                         }
+                    }
+
+                    if saveOnSuccess {
+                        self.saveParsedJSONContent(autoExpand ? prettyString : jsonString)
                     }
                 }
             }
@@ -1016,9 +483,8 @@ class JSONViewModel: ObservableObject {
         return newParsedJSON
     }
 
-    private func persistParsedJSONIfNeeded(originalJSON: String, autoExpand: Bool) {
-        guard !autoExpand else { return }
-        let trimmed = originalJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func saveParsedJSONContent(_ jsonString: String) {
+        let trimmed = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         if let selectedID = selectedJSONID,
@@ -1028,12 +494,12 @@ class JSONViewModel: ObservableObject {
                 id: existing.id,
                 date: Date(),
                 name: existing.name,
-                content: originalJSON
+                content: jsonString
             )
             parsedJSONs[index] = updated
             saveParsedJSONs()
             searchTokenCache[existing.id] = nil
-        } else if let saved = saveJSON(originalJSON) {
+        } else if let saved = saveJSON(jsonString) {
             selectedJSONID = saved.id
         }
     }
@@ -1062,18 +528,12 @@ class JSONViewModel: ObservableObject {
     }
     
     private func saveParsedJSONs() {
-        if let encoded = try? JSONEncoder().encode(parsedJSONs) {
-            UserDefaults.standard.set(encoded, forKey: "SavedJSONs")
-        }
+        persistenceService.save(parsedJSONs)
     }
     
     private func loadSavedJSONs() {
-        if let savedJSONs = UserDefaults.standard.data(forKey: "SavedJSONs") {
-            if let decodedJSONs = try? JSONDecoder().decode([ParsedJSON].self, from: savedJSONs) {
-                parsedJSONs = decodedJSONs
-                searchTokenCache.removeAll()
-            }
-        }
+        parsedJSONs = persistenceService.load()
+        searchTokenCache.removeAll()
     }
 
     func expandAll() {
@@ -1146,18 +606,7 @@ class JSONViewModel: ObservableObject {
     }
 
     func beautifyAndSaveJSON() {
-        parseJSON(inputJSON, autoExpand: true)
-
-        // Save after beautification if parsing was successful
-        // The inputJSON will be updated with the beautified version by parseJSON
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self = self else { return }
-            if self.errorMessage == nil && !self.inputJSON.isEmpty {
-                if let saved = self.saveJSON(self.inputJSON) {
-                    self.selectedJSONID = saved.id
-                }
-            }
-        }
+        parseJSON(inputJSON, autoExpand: true, saveOnSuccess: true)
     }
 
     func startNewEntry() {

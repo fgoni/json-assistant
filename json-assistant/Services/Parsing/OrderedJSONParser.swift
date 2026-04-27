@@ -113,14 +113,17 @@ struct OrderedJSONParser {
                 case "r": result.append("\r")
                 case "t": result.append("\t")
                 case "u":
-                    let scalar = try parseUnicodeScalar()
-                    result.append(Character(scalar))
+                    result.append(try parseUnicodeEscape())
                     continue
                 default:
                     throw OrderedJSONParserError.invalidLiteral("\\\(escaped)", position)
                 }
                 advance()
                 continue
+            }
+
+            guard character.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
+                throw OrderedJSONParserError.invalidLiteral(String(character), position)
             }
 
             result.append(character)
@@ -130,8 +133,41 @@ struct OrderedJSONParser {
         throw OrderedJSONParserError.unexpectedEndOfInput
     }
 
-    private mutating func parseUnicodeScalar() throws -> UnicodeScalar {
+    private mutating func parseUnicodeEscape() throws -> String {
         advance() // move past 'u'
+        let value = try parseUnicodeHexValue()
+
+        if (0xD800...0xDBFF).contains(value) {
+            guard currentCharacter == "\\" else {
+                throw OrderedJSONParserError.invalidLiteral(String(format: "\\u%04X", value), position)
+            }
+            advance()
+            guard currentCharacter == "u" else {
+                throw OrderedJSONParserError.invalidLiteral("\\", position)
+            }
+            advance()
+            let lowSurrogate = try parseUnicodeHexValue()
+            guard (0xDC00...0xDFFF).contains(lowSurrogate) else {
+                throw OrderedJSONParserError.invalidLiteral(String(format: "\\u%04X", lowSurrogate), position)
+            }
+
+            let high = value - 0xD800
+            let low = lowSurrogate - 0xDC00
+            let scalarValue = 0x10000 + ((high << 10) | low)
+            guard let scalar = UnicodeScalar(scalarValue) else {
+                throw OrderedJSONParserError.invalidLiteral(String(format: "\\u%04X\\u%04X", value, lowSurrogate), position)
+            }
+            return String(Character(scalar))
+        }
+
+        guard !(0xDC00...0xDFFF).contains(value), let scalar = UnicodeScalar(value) else {
+            throw OrderedJSONParserError.invalidLiteral(String(format: "\\u%04X", value), position)
+        }
+
+        return String(Character(scalar))
+    }
+
+    private mutating func parseUnicodeHexValue() throws -> UInt32 {
         var hex = ""
         for _ in 0..<4 {
             guard let character = currentCharacter else {
@@ -144,10 +180,10 @@ struct OrderedJSONParser {
             advance()
         }
 
-        guard let value = UInt32(hex, radix: 16), let scalar = UnicodeScalar(value) else {
+        guard let value = UInt32(hex, radix: 16) else {
             throw OrderedJSONParserError.invalidLiteral("\\u\(hex)", position)
         }
-        return scalar
+        return value
     }
 
     private mutating func parseLiteral() throws -> Any {
@@ -180,12 +216,17 @@ struct OrderedJSONParser {
             throw OrderedJSONParserError.invalidNumber(numberString, position)
         }
 
-        guard let doubleValue = Double(numberString) else {
+        let wrapped = "[\(numberString)]"
+        guard
+            let data = wrapped.data(using: .utf8),
+            let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [Any],
+            let value = parsed.first
+        else {
             throw OrderedJSONParserError.invalidNumber(numberString, position)
         }
 
         index = tempIndex
-        return NSNumber(value: doubleValue)
+        return value
     }
 
     private mutating func expect(_ character: Character) throws {

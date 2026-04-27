@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "52B773052C73C613007F17CC"
-               BuildableName = "json-assistant.app"
+               BuildableName = "JSON Assistant.app"
                BlueprintName = "json-assistant"
                ReferencedContainer = "container:json-assistant.xcodeproj">
             </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "52B773052C73C613007F17CC"
-            BuildableName = "json-assistant.app"
+            BuildableName = "JSON Assistant.app"
             BlueprintName = "json-assistant"
             ReferencedContainer = "container:json-assistant.xcodeproj">
          </BuildableReference>
@@ -86,7 +86,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "52B773052C73C613007F17CC"
-            BuildableName = "json-assistant.app"
+            BuildableName = "JSON Assistant.app"
             BlueprintName = "json-assistant"
             ReferencedContainer = "container:json-assistant.xcodeproj">
          </BuildableReference>

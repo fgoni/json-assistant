@@ -888,13 +888,13 @@ struct SidebarView: View {
             .padding(24)
             .frame(minWidth: 360)
             .background(palette.background)
-            .onChange(of: feedbackText) { _ in
+            .onChange(of: feedbackText) { _, _ in
                 if didSubmit && jsonViewModel.feedbackSubmissionIsError {
                     jsonViewModel.resetFeedbackStatus()
                     didSubmit = false
                 }
             }
-            .onChange(of: jsonViewModel.isSubmittingFeedback) { submitting in
+            .onChange(of: jsonViewModel.isSubmittingFeedback) { _, submitting in
                 guard !submitting,
                       didSubmit,
                       !jsonViewModel.feedbackSubmissionIsError,
@@ -991,11 +991,11 @@ struct JSONInputView: View {
                     jsonViewModel.beautifyAndSaveJSON()
                 }
             )
-            .onChange(of: jsonViewModel.inputJSON) { newValue in
+            .onChange(of: jsonViewModel.inputJSON) { _, newValue in
                 guard !jsonViewModel.isProgrammaticInputUpdate else { return }
                 jsonViewModel.parseJSON(newValue, autoExpand: false)
             }
-            .onChange(of: themeSettings.requestJSONWordWrap) { _ in
+            .onChange(of: themeSettings.requestJSONWordWrap) { _, _ in
                 // Trigger re-render when word-wrap setting changes
             }
             .padding(12)
@@ -1011,7 +1011,7 @@ struct JSONInputView: View {
                 .foregroundColor(palette.text)
                 .scrollContentBackground(.hidden)
                 .hideScrollIndicatorsIfAvailable()
-                .onChange(of: jsonViewModel.inputJSON) { newValue in
+                .onChange(of: jsonViewModel.inputJSON) { _, newValue in
                     guard !jsonViewModel.isProgrammaticInputUpdate else { return }
                     jsonViewModel.parseJSON(newValue, autoExpand: false)
                 }
@@ -1108,7 +1108,7 @@ struct JSONOutputView: View {
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .option])
             }
-            .onChange(of: jsonViewModel.selectedJSONID) { newSelectedID in
+            .onChange(of: jsonViewModel.selectedJSONID) { _, newSelectedID in
                 // Save current search state for previous JSON
                 if let lastID = lastSelectedJSONID {
                     jsonViewModel.saveSearchState(for: lastID, query: localSearchText)
@@ -1186,7 +1186,7 @@ struct JSONOutputView: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
                         )
-                        .onChange(of: jsonViewModel.formattedSearchFocusedID) { targetID in
+                        .onChange(of: jsonViewModel.formattedSearchFocusedID) { _, targetID in
                             guard let targetID else { return }
                             os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
                             // Delay scroll to ensure pagination is resolved and views are laid out
@@ -1207,7 +1207,7 @@ struct JSONOutputView: View {
                 )
             }
         }
-        .onChange(of: themeSettings.formattedJSONWordWrap) { _ in
+        .onChange(of: themeSettings.formattedJSONWordWrap) { _, _ in
             // Trigger re-render when word-wrap setting changes
         }
         .padding(20)
@@ -1279,7 +1279,9 @@ struct JSONOutputView: View {
                         // Debounce: only call updateFormattedSearch after 200ms of no typing
                         searchDebounceTimer?.invalidate()
                         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { _ in
-                            jsonViewModel.updateFormattedSearch(with: newValue, skipDebounce: true)
+                            Task { @MainActor in
+                                jsonViewModel.updateFormattedSearch(with: newValue, skipDebounce: true)
+                            }
                         }
                     }
                 )
@@ -1315,13 +1317,6 @@ struct JSONOutputView: View {
         )
         .frame(minWidth: 160)
     }
-}
-
-struct ParsedJSON: Identifiable, Codable {
-    let id: UUID
-    let date: Date
-    var name: String
-    let content: String
 }
 
 #Preview {
@@ -1471,6 +1466,7 @@ struct SettingsView: View {
                     lineWidth: 1
                 )
         )
+        .contentShape(RoundedRectangle(cornerRadius: 8))
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.2)) {
                 themeSettings.selectedTheme = mode
@@ -1544,6 +1540,7 @@ struct SettingsView: View {
                     lineWidth: 1
                 )
         )
+        .contentShape(RoundedRectangle(cornerRadius: 8))
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.2)) {
                 themeSettings.syntaxTheme = theme
@@ -1730,6 +1727,10 @@ struct SettingsView: View {
 	            RoundedRectangle(cornerRadius: 8)
 	                .stroke(palette.punctuation.opacity(0.25), lineWidth: 1)
 	        )
+	        .contentShape(RoundedRectangle(cornerRadius: 8))
+	        .onTapGesture {
+	            value.wrappedValue.toggle()
+	        }
 	    }
 }
 
