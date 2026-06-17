@@ -16,10 +16,14 @@ class JSONViewModel: ObservableObject {
         didSet {
             rebuildNodeLookup()
             truncationSummary = rootNode?.truncation
+            loadMoreCounts = [:]
         }
     }
     /// Non-nil when the most recent parse hit a node/depth/array limit; drives the truncation banner.
     @Published private(set) var truncationSummary: JSONTruncationInfo?
+    /// Per-node count of revealed children (paginated "Show more"); default applied on read.
+    @Published private(set) var loadMoreCounts: [UUID: Int] = [:]
+    static let defaultVisibleChildren = 30
     @Published var errorMessage: String?
     @Published var isLoadingJSON: Bool = false
     @Published var parsedJSONs: [ParsedJSON] = []
@@ -116,6 +120,17 @@ class JSONViewModel: ObservableObject {
 
     func setExpanded(_ expanded: Bool, for nodeID: UUID) {
         expansionState[nodeID] = expanded
+    }
+
+    /// Number of children currently revealed for a paginated node.
+    func visibleChildCount(for nodeID: UUID) -> Int {
+        loadMoreCounts[nodeID] ?? Self.defaultVisibleChildren
+    }
+
+    /// Reveals the next page of children for a node.
+    func revealMoreChildren(for nodeID: UUID, total: Int) {
+        let current = loadMoreCounts[nodeID] ?? Self.defaultVisibleChildren
+        loadMoreCounts[nodeID] = min(current + 50, total)
     }
 
     private func expandNodesWithoutPublishing(with nodeIDs: Set<UUID>) {
@@ -378,6 +393,9 @@ class JSONViewModel: ObservableObject {
 	                guard let workItem = workItem, !workItem.isCancelled else { return }
 	                guard self.expansionWorkItem === workItem else { return }
 
+	                // Keep the root expanded when collapsing so the tree never shrinks to
+	                // a blank state — Collapse All reveals the top level, not nothing.
+	                if !isExpanded { updatedExpansionState[rootNode.id] = true }
 	                self.expansionState = updatedExpansionState
 	                self.isExpandingOrCollapsing = false
 	                self.expansionWorkItem = nil

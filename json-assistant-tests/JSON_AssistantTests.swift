@@ -409,7 +409,7 @@ final class JSON_AssistantTests: XCTestCase {
 
         let themeSettings = ThemeSettings()
         let palette = ThemePalette.palette(for: .light)
-        let view = CollapsibleJSONView(node: root, viewModel: viewModel, palette: palette, themeSettings: themeSettings)
+        let view = JSONTreeView(rootNode: root, viewModel: viewModel, palette: palette, themeSettings: themeSettings)
             .environmentObject(themeSettings)
         let host = NSHostingView(rootView: AnyView(view))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 1000),

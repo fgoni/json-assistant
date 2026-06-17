@@ -1163,50 +1163,15 @@ struct JSONOutputView: View {
                         .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
                 )
             } else if let rootNode = jsonViewModel.rootNode {
-                ScrollViewReader { proxy in
-                    GeometryReader { geometry in
-                        let axes: Axis.Set = themeSettings.formattedJSONWordWrap ? .vertical : [.vertical, .horizontal]
-                        let scrollIndicatorGutter: CGFloat = 44
-                        let endGutter: CGFloat = themeSettings.formattedJSONWordWrap ? 24 : 96
-                        ScrollView(axes, showsIndicators: true) {
-                            ZStack(alignment: .topLeading) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
-                                        .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
-                                }
-                                .padding(.top, 12)
-                                .padding(.leading, 12)
-                                .padding(.trailing, scrollIndicatorGutter + endGutter)
-                                .padding(.bottom, themeSettings.formattedJSONWordWrap ? 12 : (scrollIndicatorGutter + endGutter))
-                            }
-                            .frame(
-                                minWidth: geometry.size.width,
-                                minHeight: geometry.size.height,
-                                alignment: .topLeading
-                            )
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .onAppear {
-                            os_log("SCROLL: ScrollView appeared for root node", log: OSLog.default, type: .debug)
-                        }
-                        .background(palette.surface)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
-                        )
-                        .onChange(of: jsonViewModel.formattedSearchFocusedID) { _, targetID in
-                            guard let targetID else { return }
-                            os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
-                            // Delay scroll to ensure pagination is resolved and views are laid out
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    proxy.scrollTo(targetID, anchor: .center)
-                                }
-                            }
-                        }
-                    }
-                }
+                JSONTreeView(rootNode: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
+                    .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(palette.surface)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                    )
             } else {
                 JSONPlaceholderView(
                     palette: palette,

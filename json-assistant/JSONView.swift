@@ -13,83 +13,113 @@ enum JSONRowRenderProbe {
 }
 #endif
 
-struct CollapsibleJSONView: View {
+/// One flattened row in the virtualized tree.
+private struct JSONRow: Identifiable {
+    enum Kind { case node, loadMore, truncatedNote }
+    let id: String
     let node: JSONNode
+    let depth: Int
+    let kind: Kind
+}
+
+/// Virtualized JSON tree: flattens the expanded nodes into a single LazyVStack so
+/// SwiftUI only instantiates the rows in (or near) the viewport, instead of the
+/// previous recursive VStacks that materialized every expanded row at once.
+struct JSONTreeView: View {
+    let rootNode: JSONNode
     @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
-    let depth: Int
     @ObservedObject var themeSettings: ThemeSettings
-    @State private var visibleChildrenCount: Int = 30
-    @State private var renderStartTime: Date?
 
-    init(node: JSONNode, viewModel: JSONViewModel, palette: ThemePalette, depth: Int = 0, themeSettings: ThemeSettings) {
-        self.node = node
-        self.viewModel = viewModel
-        self.palette = palette
-        self.depth = depth
-        self.themeSettings = themeSettings
+    private var wordWrap: Bool { themeSettings.formattedJSONWordWrap }
+
+    /// Flattens the currently-expanded tree into the linear row list to render.
+    private var rows: [JSONRow] {
+        var result: [JSONRow] = []
+        appendRows(for: rootNode, depth: 0, into: &result)
+        return result
     }
 
-    private var wordWrap: Bool {
-        themeSettings.formattedJSONWordWrap
+    private func appendRows(for node: JSONNode, depth: Int, into result: inout [JSONRow]) {
+        result.append(JSONRow(id: node.id.uuidString, node: node, depth: depth, kind: .node))
+        guard viewModel.isExpanded(node.id), !node.children.isEmpty, depth < 50 else { return }
+
+        let total = node.children.count
+        let visible = node.isFullyLoaded ? total : min(viewModel.visibleChildCount(for: node.id), total)
+        for child in node.children.prefix(visible) {
+            appendRows(for: child, depth: depth + 1, into: &result)
+        }
+        if !node.isFullyLoaded && total > visible {
+            result.append(JSONRow(id: node.id.uuidString + "#more", node: node, depth: depth + 1, kind: .loadMore))
+        }
+        if node.truncatedArrayTotal != nil {
+            result.append(JSONRow(id: node.id.uuidString + "#trunc", node: node, depth: depth + 1, kind: .truncatedNote))
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            JSONNodeView(
-                node: node,
-                palette: palette,
-                wordWrap: wordWrap,
-                isExpanded: viewModel.isExpanded(node.id),
-                isHighlighted: viewModel.formattedSearchMatches.contains(node.id),
-                isFocused: viewModel.formattedSearchFocusedID == node.id,
-                onToggle: { viewModel.toggleExpansion(for: node.id) }
-            )
-            .equatable()
-
-            // Only render children when expanded, and limit depth to prevent excessive nesting
-            if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
-                // Compute children to render
-                let childrenToRender = node.isFullyLoaded
-                    ? node.children
-                    : Array(node.children.prefix(visibleChildrenCount))
-
-                // Use regular VStack instead of LazyVStack to avoid constant view creation/destruction during scroll
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(childrenToRender) { child in
-                        // Use offset instead of padding to avoid nested layout containers
-                        CollapsibleJSONView(node: child, viewModel: viewModel, palette: palette, depth: depth + 1, themeSettings: themeSettings)
-                            .offset(x: 16)
-                            .id(child.id)
+        GeometryReader { geometry in
+            let axes: Axis.Set = wordWrap ? .vertical : [.vertical, .horizontal]
+            let scrollIndicatorGutter: CGFloat = 44
+            let endGutter: CGFloat = wordWrap ? 24 : 96
+            ScrollViewReader { proxy in
+                ScrollView(axes, showsIndicators: true) {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(rows) { row in
+                            rowView(row)
+                                .padding(.leading, CGFloat(row.depth) * 16)
+                        }
                     }
-
-                    // Show "Load More" button if there are hidden children and not fully loaded
-                    if !node.isFullyLoaded && node.children.count > visibleChildrenCount {
-                        loadMoreButton
-                    }
-
-                    // Note when this array was truncated by the parser's element cap.
-                    if let total = node.truncatedArrayTotal {
-                        truncatedArrayNote(shown: node.children.count, total: total)
+                    .padding(.top, 12)
+                    .padding(.leading, 12)
+                    .padding(.trailing, scrollIndicatorGutter + endGutter)
+                    .padding(.bottom, wordWrap ? 12 : (scrollIndicatorGutter + endGutter))
+                    .frame(minWidth: geometry.size.width, alignment: .topLeading)
+                }
+                .onChange(of: viewModel.formattedSearchFocusedID) { _, targetID in
+                    guard let targetID else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(targetID, anchor: .center)
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .id(node.id)
     }
 
     @ViewBuilder
-    private var loadMoreButton: some View {
+    private func rowView(_ row: JSONRow) -> some View {
+        switch row.kind {
+        case .node:
+            JSONNodeView(
+                node: row.node,
+                palette: palette,
+                wordWrap: wordWrap,
+                isExpanded: viewModel.isExpanded(row.node.id),
+                isHighlighted: viewModel.formattedSearchMatches.contains(row.node.id),
+                isFocused: viewModel.formattedSearchFocusedID == row.node.id,
+                onToggle: { viewModel.toggleExpansion(for: row.node.id) }
+            )
+            .equatable()
+            .id(row.node.id)
+        case .loadMore:
+            loadMoreButton(for: row.node)
+        case .truncatedNote:
+            truncatedArrayNote(for: row.node)
+        }
+    }
+
+    @ViewBuilder
+    private func loadMoreButton(for node: JSONNode) -> some View {
+        let total = node.children.count
+        let visible = viewModel.visibleChildCount(for: node.id)
         Button {
-            // Increase visible count by 50
-            visibleChildrenCount = min(visibleChildrenCount + 50, node.children.count)
+            viewModel.revealMoreChildren(for: node.id, total: total)
         } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "ellipsis.circle.fill")
-                    .foregroundColor(palette.accent)
-                Text("Show \(min(50, node.children.count - visibleChildrenCount)) more...")
-                    .foregroundColor(palette.accent)
+            HStack(spacing: 8) {
+                Image(systemName: "ellipsis.circle.fill").foregroundColor(palette.accent)
+                Text("Show \(min(50, total - visible)) more...").foregroundColor(palette.accent)
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 4)
@@ -100,11 +130,10 @@ struct CollapsibleJSONView: View {
     }
 
     @ViewBuilder
-    private func truncatedArrayNote(shown: Int, total: Int) -> some View {
+    private func truncatedArrayNote(for node: JSONNode) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(palette.muted)
-            Text("Showing first \(shown) of \(total) elements — array truncated for performance.")
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(palette.muted)
+            Text("Showing first \(node.children.count) of \(node.truncatedArrayTotal ?? node.children.count) elements — array truncated for performance.")
                 .foregroundColor(palette.muted)
                 .formattedLineWrap(wordWrap)
             Spacer(minLength: 0)
