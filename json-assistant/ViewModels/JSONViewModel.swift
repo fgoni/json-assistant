@@ -992,6 +992,21 @@ class JSONViewModel: ObservableObject {
         return index
     }
 
+#if DEBUG
+    /// Test hook: runs the real snapshot + index pipeline and returns the node IDs
+    /// whose tokens match `query` (the same path production search uses).
+    static func _searchMatchingNodeIDs(for query: String, in root: JSONNode) -> Set<UUID> {
+        let snapshot = makeSnapshotTree(from: root)
+        let index = buildSearchIndex(for: snapshot)
+        let lowered = query.lowercased()
+        var ids: Set<UUID> = []
+        for token in index.getMatchingTokens(for: lowered) {
+            ids.formUnion(index.getMatchingNodeIDs(for: token))
+        }
+        return ids
+    }
+#endif
+
     private static func collectTokensForIndex(_ index: inout SearchIndex, in snapshot: JSONNodeSnapshot) {
         // Collect tokens from this node's searchable fields
         var tokens: [String] = []
@@ -1006,11 +1021,15 @@ class JSONViewModel: ObservableObject {
             tokens.append(snapshot.typeDescriptionLowercased)
         }
 
-        // Add normalized value tokens (for leaf nodes)
+        // Add normalized value tokens (for leaf nodes). Index the full value so
+        // multi-word/phrase queries like "celebrity cruises" match, plus the
+        // individual words so single-word queries match too.
         if let normalizedValue = snapshot.normalizedValue, !normalizedValue.isEmpty {
-            // Split by spaces to get individual tokens
+            tokens.append(normalizedValue)
             let valueTokens = normalizedValue.split(separator: " ").map(String.init)
-            tokens.append(contentsOf: valueTokens)
+            if valueTokens.count > 1 {
+                tokens.append(contentsOf: valueTokens)
+            }
         }
 
         // Add all tokens to index for this node

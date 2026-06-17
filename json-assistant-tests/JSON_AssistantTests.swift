@@ -455,6 +455,26 @@ final class JSON_AssistantTests: XCTestCase {
         XCTAssertTrue(index.getMatchingTokens(for: "zzz").isEmpty)
     }
 
+    @MainActor
+    func testSearchMatchesMultiWordAndLongValues() {
+        let root = JSONNode(
+            key: "Object",
+            value: ["cruiseLine": "Celebrity Cruises", "cruiseType": "CruiseTour"],
+            isRoot: true
+        )
+        let cruiseLine = try! XCTUnwrap(root.children.first { $0.key == "cruiseLine" })
+        let cruiseType = try! XCTUnwrap(root.children.first { $0.key == "cruiseType" })
+
+        // Multi-word / phrase query.
+        XCTAssertTrue(JSONViewModel._searchMatchingNodeIDs(for: "Celebrity Cruises", in: root).contains(cruiseLine.id))
+        // Single word within a multi-word value.
+        XCTAssertTrue(JSONViewModel._searchMatchingNodeIDs(for: "celebrity", in: root).contains(cruiseLine.id))
+        // Full value longer than 8 characters.
+        XCTAssertTrue(JSONViewModel._searchMatchingNodeIDs(for: "CruiseTour", in: root).contains(cruiseType.id))
+        // Non-matching phrase.
+        XCTAssertTrue(JSONViewModel._searchMatchingNodeIDs(for: "Royal Caribbean", in: root).isEmpty)
+    }
+
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("JSON_AssistantTests.\(UUID().uuidString)", isDirectory: true)
