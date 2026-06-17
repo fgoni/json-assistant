@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Unit Test
+    # Pinned to the macOS 26 image to match the local toolchain (Xcode 26.x).
+    # If GitHub retires this image, bump the runner and xcode-version together.
+    runs-on: macos-26
+    env:
+      SCHEME: json-assistant
+      XCODE_VERSION: "26.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Unit tests
+        run: |
+          xcodebuild test \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS' \
+            -only-testing:json-assistant-tests \
+            CODE_SIGNING_ALLOWED=NO
