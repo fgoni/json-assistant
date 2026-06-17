@@ -1,5 +1,4 @@
 import Foundation
-import os
 import SwiftUI
 
 /// Aggregated record of any limits that were hit while building a `JSONNode` tree.
@@ -23,8 +22,6 @@ class JSONNode: Identifiable, ObservableObject {
     static let maxNodes = 5000
     static let maxArrayElements = 1000
     private static var nodeCount = 0
-    private static var parseStartTime: Date?
-    private static var valueAccessCount = 0
 
     // Accumulators for the in-flight parse, reset whenever a root node is built.
     private static var nodeLimitReached = false
@@ -57,35 +54,19 @@ class JSONNode: Identifiable, ObservableObject {
 
         if isRoot {
             JSONNode.nodeCount = 1
-            JSONNode.valueAccessCount = 0
-            JSONNode.parseStartTime = Date()
             JSONNode.nodeLimitReached = false
             JSONNode.depthLimitReached = false
             JSONNode.truncatedArrayCount = 0
-            os_log("JSONNode: ===== PARSE START =====", log: OSLog.default, type: .debug)
-            os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
-        }
-
-        if JSONNode.nodeCount % 100 == 0 {
-            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
-            os_log("JSONNode: Checkpoint - %d nodes created in %.2f seconds (accesses: %d)",
-                   log: OSLog.default, type: .info, JSONNode.nodeCount, elapsed, JSONNode.valueAccessCount)
         }
 
         if JSONNode.nodeCount > Self.maxNodes {
             JSONNode.nodeLimitReached = true
-            os_log("JSONNode: CRITICAL - Max nodes exceeded (%d), aborting parse", log: OSLog.default, type: .error, JSONNode.nodeCount)
             return
         }
 
         parseValue(value, currentDepth: depth)
 
         if isRoot {
-            let elapsed = Date().timeIntervalSince(JSONNode.parseStartTime ?? Date())
-            os_log("JSONNode: Finished parsing. Total: %d nodes, %d value accesses in %.2f seconds",
-                   log: OSLog.default, type: .debug, JSONNode.nodeCount, JSONNode.valueAccessCount, elapsed)
-            os_log("JSONNode: ===== PARSE END =====", log: OSLog.default, type: .debug)
-
             let info = JSONTruncationInfo(
                 nodeLimitReached: JSONNode.nodeLimitReached,
                 depthLimitReached: JSONNode.depthLimitReached,
@@ -101,7 +82,6 @@ class JSONNode: Identifiable, ObservableObject {
     private func parseValue(_ value: Any, currentDepth: Int) {
         guard currentDepth < Self.maxDepth else {
             JSONNode.depthLimitReached = true
-            os_log("JSONNode: Max depth (%d) reached", log: OSLog.default, type: .debug, Self.maxDepth)
             return
         }
 
@@ -114,14 +94,8 @@ class JSONNode: Identifiable, ObservableObject {
         case let dict as OrderedDictionary:
             let pairs = dict.orderedPairs
             children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1, path: childPath(forKey: $0.0)) }
-            if pairs.count > 100 {
-                os_log("JSONNode: Large OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .info, pairs.count, currentDepth)
-            }
 
         case let dict as [String: Any]:
-            if dict.count > 100 {
-                os_log("JSONNode: Large dictionary (%d keys) at depth %d - potential circular structure", log: OSLog.default, type: .error, dict.count, currentDepth)
-            }
             let ordered = OrderedDictionary()
             for (key, val) in dict {
                 ordered[key] = val
@@ -135,7 +109,6 @@ class JSONNode: Identifiable, ObservableObject {
             if arrayCount > Self.maxArrayElements {
                 truncatedArrayTotal = arrayCount
                 JSONNode.truncatedArrayCount += 1
-                os_log("JSONNode: Truncating array from %d to %d elements", log: OSLog.default, type: .info, arrayCount, Self.maxArrayElements)
             }
             children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1, path: "\(path)[\($0)]") }
 

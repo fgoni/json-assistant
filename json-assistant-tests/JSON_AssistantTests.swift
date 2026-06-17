@@ -7,6 +7,8 @@
 
 import XCTest
 import Combine
+import SwiftUI
+import AppKit
 @testable import JSON_Assistant
 
 final class JSON_AssistantTests: XCTestCase {
@@ -337,6 +339,102 @@ final class JSON_AssistantTests: XCTestCase {
         let child = try XCTUnwrap(root.children.first)
         XCTAssertEqual(child.path, "$[\"a-b\"]")
     }
+
+    // MARK: - Performance benchmarks
+
+    /// Builds a synthetic value of roughly `objectCount * 5` nodes, under the parser caps.
+    private func makeLargeValue(objectCount: Int = 800) -> [Any] {
+        var array: [Any] = []
+        array.reserveCapacity(objectCount)
+        for index in 0..<objectCount {
+            array.append([
+                "id": index,
+                "name": "Item \(index)",
+                "active": index % 2 == 0,
+                "score": Double(index) * 1.5
+            ])
+        }
+        return array
+    }
+
+    /// Appends a benchmark result line to a file under the app container so the
+    /// harness can read it (NSLog/measure output does not reach xcodebuild stdout).
+    private func recordBench(_ line: String) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("json_bench.txt")
+        let entry = line + "\n"
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(entry.utf8))
+            try? handle.close()
+        } else {
+            try? entry.write(to: url, atomically: true, encoding: .utf8)
+        }
+        NSLog("%@", line)
+    }
+
+    /// Measures tree construction time. Sensitive to eager vs lazy child building (Perf #3).
+    func testBenchmarkTreeBuild() {
+        let value = makeLargeValue()
+        let iterations = 20
+        let start = Date()
+        for _ in 0..<iterations {
+            _ = JSONNode(key: "Array", value: value, isRoot: true)
+        }
+        let avgMs = Date().timeIntervalSince(start) / Double(iterations) * 1000
+        recordBench(String(format: "BENCH treeBuild nodes~4000 avgMs=%.2f", avgMs))
+    }
+
+#if DEBUG
+    private func spinRunLoop(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    /// Renders the tree in an offscreen host, fully expanded, then flips a single
+    /// search match and counts how many row bodies re-evaluate. With row-render
+    /// gating (Perf #1) this should be a small constant; without it, ~all rows.
+    @MainActor
+    func testBenchmarkRowRendersOnSearchChange() throws {
+        let viewModel = JSONViewModel(persistenceService: try makePersistenceService())
+        var dict: [String: Any] = [:]
+        for index in 0..<120 { dict["key\(index)"] = ["a": index, "b": "value\(index)"] }
+        let root = JSONNode(key: "Object", value: dict, isRoot: true)
+        viewModel.rootNode = root
+
+        // Expand everything synchronously so all rows are laid out.
+        var stack: [JSONNode] = [root]
+        while let node = stack.popLast() {
+            viewModel.setExpanded(true, for: node.id)
+            stack.append(contentsOf: node.children)
+        }
+
+        let themeSettings = ThemeSettings()
+        let palette = ThemePalette.palette(for: .light)
+        let view = CollapsibleJSONView(node: root, viewModel: viewModel, palette: palette, themeSettings: themeSettings)
+            .environmentObject(themeSettings)
+        let host = NSHostingView(rootView: AnyView(view))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 1000),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        spinRunLoop(0.5)
+
+        let initialRows = JSONRowRenderProbe.bodyCount
+
+        // Flip a single row into a search match and re-render.
+        JSONRowRenderProbe.reset()
+        if let target = root.children.first {
+            viewModel.formattedSearchMatches = [target.id]
+        }
+        host.layoutSubtreeIfNeeded()
+        spinRunLoop(0.5)
+        let rerenders = JSONRowRenderProbe.bodyCount
+
+        recordBench("BENCH rowRendersOnSearchChange initialRows=\(initialRows) rerendersOnOneMatch=\(rerenders)")
+        window.orderOut(nil)
+        window.contentView = nil
+    }
+#endif
 
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory

@@ -3,6 +3,16 @@ import Foundation
 import os
 import AppKit
 
+#if DEBUG
+/// Counts JSONNodeView body evaluations so benchmarks can measure how many rows
+/// actually re-render on a state change. Main-thread only.
+enum JSONRowRenderProbe {
+    nonisolated(unsafe) static var bodyCount = 0
+    static func reset() { bodyCount = 0 }
+    static func tick() { bodyCount += 1 }
+}
+#endif
+
 struct CollapsibleJSONView: View {
     let node: JSONNode
     @ObservedObject var viewModel: JSONViewModel
@@ -126,6 +136,9 @@ struct JSONNodeView: View, Equatable {
     }
 
     var body: some View {
+#if DEBUG
+        let _ = JSONRowRenderProbe.tick()
+#endif
         let isNodeExpanded = isExpanded
 
         let (keyColor, punctuationColor, keyWeight): (Color, Color, Font.Weight) = {
