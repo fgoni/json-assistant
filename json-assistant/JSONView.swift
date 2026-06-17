@@ -26,7 +26,16 @@ struct CollapsibleJSONView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            JSONNodeView(node: node, viewModel: viewModel, palette: palette, wordWrap: wordWrap)
+            JSONNodeView(
+                node: node,
+                palette: palette,
+                wordWrap: wordWrap,
+                isExpanded: viewModel.isExpanded(node.id),
+                isHighlighted: viewModel.formattedSearchMatches.contains(node.id),
+                isFocused: viewModel.formattedSearchFocusedID == node.id,
+                onToggle: { viewModel.toggleExpansion(for: node.id) }
+            )
+            .equatable()
 
             // Only render children when expanded, and limit depth to prevent excessive nesting
             if viewModel.isExpanded(node.id) && !node.children.isEmpty && depth < 50 {
@@ -96,17 +105,28 @@ struct CollapsibleJSONView: View {
 }
 
 
-struct JSONNodeView: View {
+struct JSONNodeView: View, Equatable {
     let node: JSONNode
-    @ObservedObject var viewModel: JSONViewModel
     let palette: ThemePalette
     let wordWrap: Bool
-    @State private var renderCount = 0
+    let isExpanded: Bool
+    let isHighlighted: Bool
+    let isFocused: Bool
+    let onToggle: () -> Void
+
+    // Equatable so SwiftUI can skip re-rendering a row whose inputs are unchanged.
+    // The node is immutable after construction, so identity captures its content.
+    static func == (lhs: JSONNodeView, rhs: JSONNodeView) -> Bool {
+        lhs.node === rhs.node
+            && lhs.isExpanded == rhs.isExpanded
+            && lhs.isHighlighted == rhs.isHighlighted
+            && lhs.isFocused == rhs.isFocused
+            && lhs.wordWrap == rhs.wordWrap
+            && lhs.palette == rhs.palette
+    }
 
     var body: some View {
-        let isHighlighted = viewModel.formattedSearchMatches.contains(node.id)
-        let isFocused = viewModel.formattedSearchFocusedID == node.id
-        let isNodeExpanded = viewModel.isExpanded(node.id)
+        let isNodeExpanded = isExpanded
 
         let (keyColor, punctuationColor, keyWeight): (Color, Color, Font.Weight) = {
             if isFocused {
@@ -132,7 +152,7 @@ struct JSONNodeView: View {
                 .opacity(node.children.isEmpty ? 0 : 1)
                 .onTapGesture {
                     guard !node.children.isEmpty else { return }
-                    viewModel.toggleExpansion(for: node.id)
+                    onToggle()
                 }
             
             if node.isRoot {

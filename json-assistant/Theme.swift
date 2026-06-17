@@ -55,7 +55,7 @@ enum SyntaxTheme: String, CaseIterable, Identifiable {
     }
 }
 
-struct ThemePalette {
+struct ThemePalette: Equatable {
     let background: Color
     let surface: Color
     let text: Color
