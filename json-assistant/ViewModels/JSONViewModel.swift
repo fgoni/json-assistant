@@ -1307,7 +1307,7 @@ class JSONViewModel: ObservableObject {
     }
 
     // MARK: - Search Index for Fast Token Lookup
-    private struct SearchIndex {
+    struct SearchIndex {
         /// Maps search tokens (prefixes) to node IDs
         /// Example: "user" → [nodeID1, nodeID2, nodeID3]
         private var tokenToNodeIDs: [String: Set<UUID>] = [:]
@@ -1315,20 +1315,18 @@ class JSONViewModel: ObservableObject {
         /// Maps node IDs to their search tokens for quick lookup of tokens that match
         private var nodeIDToTokens: [UUID: Set<String>] = [:]
 
+        init() {}
+
         mutating func addTokensForNode(_ nodeID: UUID, tokens: [String]) {
             var uniqueTokens: Set<String> = []
 
-            for token in tokens {
-                // Only process tokens that are at least 3 characters long
-                guard token.count >= 3 else { continue }
-
-                // Add prefixes (3-8 chars) to support substring matching while reducing memory
-                // Limiting to 8 chars reduces memory overhead by ~60% vs 20-char limit
-                for i in 3...min(token.count, 8) {
-                    let prefix = String(token.prefix(i))
-                    tokenToNodeIDs[prefix, default: []].insert(nodeID)
-                    uniqueTokens.insert(prefix)
-                }
+            // Index the full (lowercased) token. getMatchingTokens does a substring
+            // (`contains`) match, so partial queries still hit — and queries longer
+            // than 8 chars now match too. (The old scheme only stored 3–8 char
+            // prefixes, so e.g. searching "CruiseTour" never matched "CruiseTour".)
+            for token in tokens where !token.isEmpty {
+                tokenToNodeIDs[token, default: []].insert(nodeID)
+                uniqueTokens.insert(token)
             }
 
             nodeIDToTokens[nodeID] = uniqueTokens

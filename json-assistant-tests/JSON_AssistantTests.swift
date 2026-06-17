@@ -436,6 +436,25 @@ final class JSON_AssistantTests: XCTestCase {
     }
 #endif
 
+    // MARK: - Search index
+
+    func testSearchIndexMatchesQueriesLongerThanEightCharacters() {
+        var index = JSONViewModel.SearchIndex()
+        let nodeID = UUID()
+        index.addTokensForNode(nodeID, tokens: ["cruisetour"])
+
+        // A 10-char value must match — the index used to store only 3–8 char
+        // prefixes, so searching the full "CruiseTour" returned nothing.
+        let longMatches = index.getMatchingTokens(for: "cruisetour")
+        XCTAssertFalse(longMatches.isEmpty, "query longer than 8 chars should match")
+        XCTAssertTrue(longMatches.contains { index.getMatchingNodeIDs(for: $0).contains(nodeID) })
+
+        // Partial and mid-token substrings still match.
+        XCTAssertFalse(index.getMatchingTokens(for: "cruise").isEmpty)
+        XCTAssertFalse(index.getMatchingTokens(for: "tour").isEmpty)
+        XCTAssertTrue(index.getMatchingTokens(for: "zzz").isEmpty)
+    }
+
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("JSON_AssistantTests.\(UUID().uuidString)", isDirectory: true)
