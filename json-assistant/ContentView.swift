@@ -1138,6 +1138,10 @@ struct JSONOutputView: View {
                 }
             }
 
+            if let truncation = jsonViewModel.truncationSummary, jsonViewModel.rootNode != nil {
+                truncationBanner(truncation)
+            }
+
             if jsonViewModel.isLoadingJSON {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -1213,6 +1217,49 @@ struct JSONOutputView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
+    }
+
+    @ViewBuilder
+    private func truncationBanner(_ info: JSONTruncationInfo) -> some View {
+        let reasons: [String] = {
+            var result: [String] = []
+            if info.nodeLimitReached {
+                result.append("more than \(info.maxNodes) nodes")
+            }
+            if info.depthLimitReached {
+                result.append("nesting deeper than \(info.maxDepth) levels")
+            }
+            if info.truncatedArrayCount > 0 {
+                let plural = info.truncatedArrayCount == 1 ? "array" : "arrays"
+                result.append("\(info.truncatedArrayCount) \(plural) over \(info.maxArrayElements) elements")
+            }
+            return result
+        }()
+
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(palette.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("This document was truncated for performance.")
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+                if !reasons.isEmpty {
+                    Text("Hidden: " + reasons.joined(separator: ", ") + ".")
+                        .font(.themedUI(size: 11))
+                        .foregroundColor(palette.muted)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(palette.accent.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(palette.accent.opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var formattedSearchControls: some View {

@@ -47,6 +47,11 @@ struct CollapsibleJSONView: View {
                     if !node.isFullyLoaded && node.children.count > visibleChildrenCount {
                         loadMoreButton
                     }
+
+                    // Note when this array was truncated by the parser's element cap.
+                    if let total = node.truncatedArrayTotal {
+                        truncatedArrayNote(shown: node.children.count, total: total)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -72,6 +77,20 @@ struct CollapsibleJSONView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func truncatedArrayNote(shown: Int, total: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(palette.muted)
+            Text("Showing first \(shown) of \(total) elements — array truncated for performance.")
+                .foregroundColor(palette.muted)
+                .formattedLineWrap(wordWrap)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
     }
 }
 
@@ -223,8 +242,13 @@ private extension View {
 class JSONViewModel: ObservableObject {
     @Published var inputJSON: String = ""
     @Published var rootNode: JSONNode? {
-        didSet { rebuildNodeLookup() }
+        didSet {
+            rebuildNodeLookup()
+            truncationSummary = rootNode?.truncation
+        }
     }
+    /// Non-nil when the most recent parse hit a node/depth/array limit; drives the truncation banner.
+    @Published private(set) var truncationSummary: JSONTruncationInfo?
     @Published var errorMessage: String?
     @Published var isLoadingJSON: Bool = false
     @Published var parsedJSONs: [ParsedJSON] = []

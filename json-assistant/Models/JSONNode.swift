@@ -2,12 +2,34 @@ import Foundation
 import os
 import SwiftUI
 
+/// Aggregated record of any limits that were hit while building a `JSONNode` tree.
+/// Surfaced in the UI so large/deep documents are never silently truncated.
+struct JSONTruncationInfo: Equatable {
+    var nodeLimitReached: Bool = false
+    var depthLimitReached: Bool = false
+    var truncatedArrayCount: Int = 0
+
+    let maxNodes: Int
+    let maxDepth: Int
+    let maxArrayElements: Int
+
+    var didTruncate: Bool {
+        nodeLimitReached || depthLimitReached || truncatedArrayCount > 0
+    }
+}
+
 class JSONNode: Identifiable, ObservableObject {
-    private static let maxDepth = 50
-    private static let maxNodes = 5000
+    static let maxDepth = 50
+    static let maxNodes = 5000
+    static let maxArrayElements = 1000
     private static var nodeCount = 0
     private static var parseStartTime: Date?
     private static var valueAccessCount = 0
+
+    // Accumulators for the in-flight parse, reset whenever a root node is built.
+    private static var nodeLimitReached = false
+    private static var depthLimitReached = false
+    private static var truncatedArrayCount = 0
 
     let id = UUID()
     let key: String
@@ -17,6 +39,11 @@ class JSONNode: Identifiable, ObservableObject {
     @Published var isExpanded: Bool = false
     @Published var children: [JSONNode] = []
     @Published var isFullyLoaded: Bool = false
+
+    /// Original element count when this node's array value was truncated, else nil.
+    private(set) var truncatedArrayTotal: Int?
+    /// Populated on the root node once parsing finishes, describing any limits hit.
+    private(set) var truncation: JSONTruncationInfo?
 
     init(key: String, value: Any, isRoot: Bool = false, depth: Int = 0) {
         self.key = key
@@ -29,6 +56,9 @@ class JSONNode: Identifiable, ObservableObject {
             JSONNode.nodeCount = 1
             JSONNode.valueAccessCount = 0
             JSONNode.parseStartTime = Date()
+            JSONNode.nodeLimitReached = false
+            JSONNode.depthLimitReached = false
+            JSONNode.truncatedArrayCount = 0
             os_log("JSONNode: ===== PARSE START =====", log: OSLog.default, type: .debug)
             os_log("JSONNode: Starting to parse root with key: %{public}s", log: OSLog.default, type: .debug, key)
         }
@@ -40,6 +70,7 @@ class JSONNode: Identifiable, ObservableObject {
         }
 
         if JSONNode.nodeCount > Self.maxNodes {
+            JSONNode.nodeLimitReached = true
             os_log("JSONNode: CRITICAL - Max nodes exceeded (%d), aborting parse", log: OSLog.default, type: .error, JSONNode.nodeCount)
             return
         }
@@ -51,16 +82,30 @@ class JSONNode: Identifiable, ObservableObject {
             os_log("JSONNode: Finished parsing. Total: %d nodes, %d value accesses in %.2f seconds",
                    log: OSLog.default, type: .debug, JSONNode.nodeCount, JSONNode.valueAccessCount, elapsed)
             os_log("JSONNode: ===== PARSE END =====", log: OSLog.default, type: .debug)
+
+            let info = JSONTruncationInfo(
+                nodeLimitReached: JSONNode.nodeLimitReached,
+                depthLimitReached: JSONNode.depthLimitReached,
+                truncatedArrayCount: JSONNode.truncatedArrayCount,
+                maxNodes: Self.maxNodes,
+                maxDepth: Self.maxDepth,
+                maxArrayElements: Self.maxArrayElements
+            )
+            truncation = info.didTruncate ? info : nil
         }
     }
 
     private func parseValue(_ value: Any, currentDepth: Int) {
         guard currentDepth < Self.maxDepth else {
+            JSONNode.depthLimitReached = true
             os_log("JSONNode: Max depth (%d) reached", log: OSLog.default, type: .debug, Self.maxDepth)
             return
         }
 
-        guard JSONNode.nodeCount <= Self.maxNodes else { return }
+        guard JSONNode.nodeCount <= Self.maxNodes else {
+            JSONNode.nodeLimitReached = true
+            return
+        }
 
         switch value {
         case let dict as OrderedDictionary:
@@ -83,9 +128,11 @@ class JSONNode: Identifiable, ObservableObject {
 
         case let array as [Any]:
             let arrayCount = array.count
-            let limitedArray = arrayCount > 1000 ? Array(array.prefix(1000)) : array
-            if arrayCount > 1000 {
-                os_log("JSONNode: Truncating array from %d to 1000 elements", log: OSLog.default, type: .info, arrayCount)
+            let limitedArray = arrayCount > Self.maxArrayElements ? Array(array.prefix(Self.maxArrayElements)) : array
+            if arrayCount > Self.maxArrayElements {
+                truncatedArrayTotal = arrayCount
+                JSONNode.truncatedArrayCount += 1
+                os_log("JSONNode: Truncating array from %d to %d elements", log: OSLog.default, type: .info, arrayCount, Self.maxArrayElements)
             }
             children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1) }
 
