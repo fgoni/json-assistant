@@ -141,6 +141,182 @@ final class JSON_AssistantTests: XCTestCase {
         }
     }
 
+    // MARK: - Parser: structure & ordering
+
+    func testParserPreservesObjectKeyOrder() throws {
+        var parser = OrderedJSONParser("{\"z\":1,\"a\":2,\"m\":3}")
+        let dict = try XCTUnwrap(try parser.parse() as? OrderedDictionary)
+        XCTAssertEqual(dict.orderedPairs.map { $0.0 }, ["z", "a", "m"])
+    }
+
+    func testParserDuplicateKeysKeepLastValueAtFirstPosition() throws {
+        var parser = OrderedJSONParser("{\"a\":1,\"b\":2,\"a\":3}")
+        let dict = try XCTUnwrap(try parser.parse() as? OrderedDictionary)
+        XCTAssertEqual(dict.orderedPairs.map { $0.0 }, ["a", "b"])
+        XCTAssertEqual(dict["a"] as? NSNumber, 3)
+    }
+
+    func testParserParsesEmptyContainers() throws {
+        var objParser = OrderedJSONParser("{}")
+        XCTAssertEqual(try XCTUnwrap(try objParser.parse() as? OrderedDictionary).orderedPairs.count, 0)
+        var arrParser = OrderedJSONParser("[]")
+        XCTAssertEqual(try XCTUnwrap(try arrParser.parse() as? [Any]).count, 0)
+    }
+
+    func testParserParsesTopLevelScalars() throws {
+        var numberParser = OrderedJSONParser("42")
+        XCTAssertEqual(try numberParser.parse() as? NSNumber, 42)
+        var stringParser = OrderedJSONParser("\"hi\"")
+        XCTAssertEqual(try stringParser.parse() as? String, "hi")
+        var boolParser = OrderedJSONParser("true")
+        XCTAssertEqual(try boolParser.parse() as? NSNumber, NSNumber(value: true))
+        var nullParser = OrderedJSONParser("null")
+        XCTAssertTrue(try nullParser.parse() is NSNull)
+    }
+
+    // MARK: - Parser: numeric precision & escapes
+
+    func testParserPreservesLargeIntegerPrecision() throws {
+        var parser = OrderedJSONParser("{\"big\":9223372036854775807}")
+        let dict = try XCTUnwrap(try parser.parse() as? OrderedDictionary)
+        let number = try XCTUnwrap(dict["big"] as? NSNumber)
+        XCTAssertEqual(number.stringValue, "9223372036854775807")
+    }
+
+    func testParserPreservesDecimalValues() throws {
+        var parser = OrderedJSONParser("[0.1, 1.5, -2.25]")
+        let array = try XCTUnwrap(try parser.parse() as? [Any])
+        XCTAssertEqual((array[0] as? NSNumber)?.stringValue, "0.1")
+        XCTAssertEqual((array[1] as? NSNumber)?.stringValue, "1.5")
+        XCTAssertEqual((array[2] as? NSNumber)?.stringValue, "-2.25")
+    }
+
+    func testParserDecodesEscapeSequences() throws {
+        var parser = OrderedJSONParser("{\"s\":\"line1\\nline2\\ttab\\\"quote\\\\slash\\/fwd\"}")
+        let dict = try XCTUnwrap(try parser.parse() as? OrderedDictionary)
+        XCTAssertEqual(dict["s"] as? String, "line1\nline2\ttab\"quote\\slash/fwd")
+    }
+
+    func testParserDecodesBMPUnicodeEscape() throws {
+        var parser = OrderedJSONParser("{\"s\":\"caf\\u00e9\"}")
+        let dict = try XCTUnwrap(try parser.parse() as? OrderedDictionary)
+        XCTAssertEqual(dict["s"] as? String, "café")
+    }
+
+    // MARK: - Parser: invalid input diagnostics
+
+    func testParserRejectsTrailingObjectComma() {
+        var parser = OrderedJSONParser("{\"a\":1,}")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    func testParserRejectsTrailingArrayComma() {
+        var parser = OrderedJSONParser("[1,2,]")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    func testParserRejectsUnclosedObject() {
+        var parser = OrderedJSONParser("{\"a\":1")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    func testParserRejectsLeadingZeroNumber() {
+        var parser = OrderedJSONParser("01")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    func testParserRejectsTrailingGarbage() {
+        var parser = OrderedJSONParser("{\"a\":1} extra")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    func testParserRejectsUnquotedKey() {
+        var parser = OrderedJSONParser("{a:1}")
+        XCTAssertThrowsError(try parser.parse())
+    }
+
+    // MARK: - Formatter
+
+    func testFormatterPreservesKeyOrderAndIndentation() throws {
+        var parser = OrderedJSONParser("{\"b\":1,\"a\":{\"d\":2}}")
+        let value = try parser.parse()
+        let pretty = OrderedJSONFormatter.prettyPrinted(value)
+        XCTAssertEqual(pretty, """
+        {
+            "b": 1,
+            "a": {
+                "d": 2
+            }
+        }
+        """)
+    }
+
+    func testFormatterRoundTripsThroughParser() throws {
+        let source = "{\"name\":\"Coffee\",\"tags\":[\"a\",\"b\"],\"open\":true,\"n\":null}"
+        var parser = OrderedJSONParser(source)
+        let pretty = OrderedJSONFormatter.prettyPrinted(try parser.parse())
+        var reparser = OrderedJSONParser(pretty)
+        let dict = try XCTUnwrap(try reparser.parse() as? OrderedDictionary)
+        XCTAssertEqual(dict.orderedPairs.map { $0.0 }, ["name", "tags", "open", "n"])
+        XCTAssertEqual(dict["name"] as? String, "Coffee")
+        XCTAssertEqual((dict["tags"] as? [Any])?.count, 2)
+    }
+
+    func testFormatterEmptyContainers() {
+        XCTAssertEqual(OrderedJSONFormatter.prettyPrinted(OrderedDictionary()), "{}")
+        XCTAssertEqual(OrderedJSONFormatter.prettyPrinted([Any]()), "[]")
+    }
+
+    func testFormatterEscapesControlCharacters() {
+        let dict = OrderedDictionary()
+        dict["s"] = "tab\tnewline\n"
+        XCTAssertEqual(OrderedJSONFormatter.prettyPrinted(dict), """
+        {
+            "s": "tab\\tnewline\\n"
+        }
+        """)
+    }
+
+    // MARK: - Truncation limits
+
+    func testLargeArrayIsTruncatedAndRecorded() {
+        let root = JSONNode(key: "Array", value: Array(0..<1500), isRoot: true)
+        XCTAssertEqual(root.children.count, JSONNode.maxArrayElements)
+        XCTAssertEqual(root.truncatedArrayTotal, 1500)
+        XCTAssertEqual(root.truncation?.truncatedArrayCount, 1)
+        XCTAssertTrue(root.truncation?.didTruncate ?? false)
+    }
+
+    func testSmallDocumentReportsNoTruncation() {
+        let root = JSONNode(key: "Object", value: ["a": 1, "b": [1, 2, 3]], isRoot: true)
+        XCTAssertNil(root.truncation)
+    }
+
+    func testDeepNestingHitsDepthLimit() {
+        var value: Any = 1
+        for _ in 0...(JSONNode.maxDepth + 2) { value = [value] }
+        let root = JSONNode(key: "Array", value: value, isRoot: true)
+        XCTAssertTrue(root.truncation?.depthLimitReached ?? false)
+    }
+
+    func testManyNodesHitNodeLimit() {
+        var dict: [String: Any] = [:]
+        for index in 0..<(JSONNode.maxNodes + 500) { dict["k\(index)"] = index }
+        let root = JSONNode(key: "Object", value: dict, isRoot: true)
+        XCTAssertTrue(root.truncation?.nodeLimitReached ?? false)
+    }
+
+    func testViewModelPublishesTruncationSummary() async throws {
+        let service = try makePersistenceService()
+        let viewModel = await MainActor.run { JSONViewModel(persistenceService: service) }
+        let root = JSONNode(key: "Array", value: Array(0..<1200), isRoot: true)
+        await MainActor.run { viewModel.rootNode = root }
+        await MainActor.run {
+            XCTAssertNotNil(viewModel.truncationSummary)
+            XCTAssertEqual(viewModel.truncationSummary?.truncatedArrayCount, 1)
+        }
+    }
+
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("JSON_AssistantTests.\(UUID().uuidString)", isDirectory: true)
