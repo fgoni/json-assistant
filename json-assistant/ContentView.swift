@@ -422,6 +422,11 @@ struct ContentView: View {
         .sheet(isPresented: $themeSettings.showSettingsPanel) {
             SettingsView(themeSettings: themeSettings)
         }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { $0.isFileURL }) else { return false }
+            jsonViewModel.loadJSON(from: url)
+            return true
+        }
     }
 }
 

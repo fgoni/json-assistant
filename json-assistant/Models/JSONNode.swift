@@ -35,6 +35,8 @@ class JSONNode: Identifiable, ObservableObject {
     let key: String
     let isRoot: Bool
     let depth: Int
+    /// JSONPath-style location of this node, e.g. `$.users[0].name`.
+    let path: String
     @Published var value: Any
     @Published var isExpanded: Bool = false
     @Published var children: [JSONNode] = []
@@ -45,11 +47,12 @@ class JSONNode: Identifiable, ObservableObject {
     /// Populated on the root node once parsing finishes, describing any limits hit.
     private(set) var truncation: JSONTruncationInfo?
 
-    init(key: String, value: Any, isRoot: Bool = false, depth: Int = 0) {
+    init(key: String, value: Any, isRoot: Bool = false, depth: Int = 0, path: String = "$") {
         self.key = key
         self.isRoot = isRoot
         self.value = value
         self.depth = depth
+        self.path = path
         JSONNode.nodeCount += 1
 
         if isRoot {
@@ -110,7 +113,7 @@ class JSONNode: Identifiable, ObservableObject {
         switch value {
         case let dict as OrderedDictionary:
             let pairs = dict.orderedPairs
-            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1, path: childPath(forKey: $0.0)) }
             if pairs.count > 100 {
                 os_log("JSONNode: Large OrderedDictionary with %d pairs at depth %d", log: OSLog.default, type: .info, pairs.count, currentDepth)
             }
@@ -124,7 +127,7 @@ class JSONNode: Identifiable, ObservableObject {
                 ordered[key] = val
             }
             let pairs = ordered.orderedPairs
-            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1) }
+            children = pairs.map { JSONNode(key: $0.0, value: $0.1, depth: currentDepth + 1, path: childPath(forKey: $0.0)) }
 
         case let array as [Any]:
             let arrayCount = array.count
@@ -134,11 +137,25 @@ class JSONNode: Identifiable, ObservableObject {
                 JSONNode.truncatedArrayCount += 1
                 os_log("JSONNode: Truncating array from %d to %d elements", log: OSLog.default, type: .info, arrayCount, Self.maxArrayElements)
             }
-            children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1) }
+            children = limitedArray.enumerated().map { JSONNode(key: "[\($0)]", value: $1, depth: currentDepth + 1, path: "\(path)[\($0)]") }
 
         default:
             break
         }
+    }
+
+    /// Builds a child's JSONPath from this node's path, using dot notation for
+    /// simple identifier keys and bracket-quoted notation otherwise.
+    private func childPath(forKey key: String) -> String {
+        let isSimpleIdentifier = !key.isEmpty
+            && (key.first!.isLetter || key.first! == "_")
+            && key.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+        if isSimpleIdentifier {
+            return "\(path).\(key)"
+        }
+        let escaped = key.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\(path)[\"\(escaped)\"]"
     }
 
     var displayValue: String {

@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import os
+import AppKit
 
 struct CollapsibleJSONView: View {
     let node: JSONNode
@@ -170,8 +171,20 @@ struct JSONNodeView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(borderColor, lineWidth: hasBorder ? 1 : 0)
         )
+        .contextMenu {
+            Button("Copy Path") { copyToClipboard(node.path) }
+            Button("Copy Value") { copyToClipboard(OrderedJSONFormatter.prettyPrinted(node.value)) }
+            if !node.isRoot {
+                Button("Copy Key") { copyToClipboard(node.key) }
+            }
+        }
     }
-    
+
+    private func copyToClipboard(_ string: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+    }
+
     @ViewBuilder
     private var leafValueView: some View {
         if node.value is OrderedDictionary || node.value is [String: Any] {

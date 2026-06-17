@@ -404,6 +404,21 @@ class JSONViewModel: ObservableObject {
         parseJSON(inputJSON, autoExpand: true, saveOnSuccess: true)
     }
 
+    /// Loads a `.json` file's contents into the editor and beautifies/saves it.
+    /// Wraps security-scoped access so drag-and-dropped files read correctly in the sandbox.
+    func loadJSON(from url: URL) {
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        defer { if didStartAccess { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            setEditorText(content)
+            beautifyAndSaveJSON()
+        } catch {
+            errorMessage = "Could not read \(url.lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
     func startNewEntry() {
         selectedJSONID = nil
         setEditorText("")

@@ -317,6 +317,27 @@ final class JSON_AssistantTests: XCTestCase {
         }
     }
 
+    // MARK: - Node JSONPath
+
+    func testNodePathUsesDotAndBracketNotation() throws {
+        var parser = OrderedJSONParser("{\"users\":[{\"name\":\"A\"},{\"name\":\"B\"}]}")
+        let root = JSONNode(key: "Object", value: try parser.parse(), isRoot: true)
+        XCTAssertEqual(root.path, "$")
+        let users = try XCTUnwrap(root.children.first { $0.key == "users" })
+        XCTAssertEqual(users.path, "$.users")
+        let firstUser = try XCTUnwrap(users.children.first)
+        XCTAssertEqual(firstUser.path, "$.users[0]")
+        let name = try XCTUnwrap(firstUser.children.first { $0.key == "name" })
+        XCTAssertEqual(name.path, "$.users[0].name")
+    }
+
+    func testNodePathQuotesNonIdentifierKeys() throws {
+        var parser = OrderedJSONParser("{\"a-b\":1}")
+        let root = JSONNode(key: "Object", value: try parser.parse(), isRoot: true)
+        let child = try XCTUnwrap(root.children.first)
+        XCTAssertEqual(child.path, "$[\"a-b\"]")
+    }
+
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("JSON_AssistantTests.\(UUID().uuidString)", isDirectory: true)
