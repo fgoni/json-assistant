@@ -422,6 +422,11 @@ struct ContentView: View {
         .sheet(isPresented: $themeSettings.showSettingsPanel) {
             SettingsView(themeSettings: themeSettings)
         }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { $0.isFileURL }) else { return false }
+            jsonViewModel.loadJSON(from: url)
+            return true
+        }
     }
 }
 
@@ -1138,6 +1143,10 @@ struct JSONOutputView: View {
                 }
             }
 
+            if let truncation = jsonViewModel.truncationSummary, jsonViewModel.rootNode != nil {
+                truncationBanner(truncation)
+            }
+
             if jsonViewModel.isLoadingJSON {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -1154,50 +1163,15 @@ struct JSONOutputView: View {
                         .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
                 )
             } else if let rootNode = jsonViewModel.rootNode {
-                ScrollViewReader { proxy in
-                    GeometryReader { geometry in
-                        let axes: Axis.Set = themeSettings.formattedJSONWordWrap ? .vertical : [.vertical, .horizontal]
-                        let scrollIndicatorGutter: CGFloat = 44
-                        let endGutter: CGFloat = themeSettings.formattedJSONWordWrap ? 24 : 96
-                        ScrollView(axes, showsIndicators: true) {
-                            ZStack(alignment: .topLeading) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    CollapsibleJSONView(node: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
-                                        .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
-                                }
-                                .padding(.top, 12)
-                                .padding(.leading, 12)
-                                .padding(.trailing, scrollIndicatorGutter + endGutter)
-                                .padding(.bottom, themeSettings.formattedJSONWordWrap ? 12 : (scrollIndicatorGutter + endGutter))
-                            }
-                            .frame(
-                                minWidth: geometry.size.width,
-                                minHeight: geometry.size.height,
-                                alignment: .topLeading
-                            )
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .onAppear {
-                            os_log("SCROLL: ScrollView appeared for root node", log: OSLog.default, type: .debug)
-                        }
-                        .background(palette.surface)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
-                        )
-                        .onChange(of: jsonViewModel.formattedSearchFocusedID) { _, targetID in
-                            guard let targetID else { return }
-                            os_log("SCROLL: Focusing on node %{public}s", log: OSLog.default, type: .debug, String(describing: targetID))
-                            // Delay scroll to ensure pagination is resolved and views are laid out
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    proxy.scrollTo(targetID, anchor: .center)
-                                }
-                            }
-                        }
-                    }
-                }
+                JSONTreeView(rootNode: rootNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
+                    .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(palette.surface)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                    )
             } else {
                 JSONPlaceholderView(
                     palette: palette,
@@ -1213,6 +1187,49 @@ struct JSONOutputView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
+    }
+
+    @ViewBuilder
+    private func truncationBanner(_ info: JSONTruncationInfo) -> some View {
+        let reasons: [String] = {
+            var result: [String] = []
+            if info.nodeLimitReached {
+                result.append("more than \(info.maxNodes) nodes")
+            }
+            if info.depthLimitReached {
+                result.append("nesting deeper than \(info.maxDepth) levels")
+            }
+            if info.truncatedArrayCount > 0 {
+                let plural = info.truncatedArrayCount == 1 ? "array" : "arrays"
+                result.append("\(info.truncatedArrayCount) \(plural) over \(info.maxArrayElements) elements")
+            }
+            return result
+        }()
+
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(palette.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("This document was truncated for performance.")
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.text)
+                if !reasons.isEmpty {
+                    Text("Hidden: " + reasons.joined(separator: ", ") + ".")
+                        .font(.themedUI(size: 11))
+                        .foregroundColor(palette.muted)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(palette.accent.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(palette.accent.opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var formattedSearchControls: some View {

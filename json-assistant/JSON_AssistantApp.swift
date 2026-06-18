@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 @main
 struct JSON_AssistantApp: App {
@@ -16,6 +18,13 @@ struct JSON_AssistantApp: App {
                     viewModel.startNewEntry()
                 }
                 .keyboardShortcut("n", modifiers: .command)
+
+                Button("Open JSON…") {
+                    openFile()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+
+                Divider()
 
                 Button("Collapse All") {
                     viewModel.collapseAll()
@@ -102,6 +111,16 @@ struct JSON_AssistantApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+        }
+    }
+
+    private func openFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json, .text, .plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.loadJSON(from: url)
         }
     }
 }

@@ -10,7 +10,6 @@
 		5211B6EB2F0C32FA00F5324B /* JsonAssistant.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5211B6EA2F0C32FA00F5324B /* JsonAssistant.icon */; };
 		52B7730A2C73C613007F17CC /* JSON_AssistantApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773092C73C613007F17CC /* JSON_AssistantApp.swift */; };
 		52B7730C2C73C613007F17CC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B7730B2C73C613007F17CC /* ContentView.swift */; };
-		52B7730E2C73C613007F17CC /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B7730D2C73C613007F17CC /* Item.swift */; };
 		52B773102C73C614007F17CC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 52B7730F2C73C614007F17CC /* Assets.xcassets */; };
 		52B773132C73C614007F17CC /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 52B773122C73C614007F17CC /* Preview Assets.xcassets */; };
 		7D1000012F0D000100000001 /* JSONNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000112F0D000100000001 /* JSONNode.swift */; };
@@ -19,6 +18,7 @@
 		7D1000042F0D000100000001 /* OrderedDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000142F0D000100000001 /* OrderedDictionary.swift */; };
 		7D1000052F0D000100000001 /* OrderedJSONFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000152F0D000100000001 /* OrderedJSONFormatter.swift */; };
 		7D1000062F0D000100000001 /* OrderedJSONParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000162F0D000100000001 /* OrderedJSONParser.swift */; };
+		7D1000212F0D000100000001 /* JSONViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000202F0D000100000001 /* JSONViewModel.swift */; };
 		7D1000072F0D000100000001 /* OrderedJSONParserError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000172F0D000100000001 /* OrderedJSONParserError.swift */; };
 		7D1000082F0D000100000001 /* NSNumber+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000182F0D000100000001 /* NSNumber+Extensions.swift */; };
 		7D1000092F0D000100000001 /* JSONPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1000192F0D000100000001 /* JSONPersistenceService.swift */; };
@@ -51,7 +51,6 @@
 		52B773062C73C613007F17CC /* JSON Assistant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "JSON Assistant.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52B773092C73C613007F17CC /* JSON_AssistantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantApp.swift; sourceTree = "<group>"; };
 		52B7730B2C73C613007F17CC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		52B7730D2C73C613007F17CC /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
 		52B7730F2C73C614007F17CC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		52B773122C73C614007F17CC /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		52B773142C73C614007F17CC /* JSON_Assistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JSON_Assistant.entitlements; sourceTree = "<group>"; };
@@ -61,6 +60,7 @@
 		7D1000142F0D000100000001 /* OrderedDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Parsing/OrderedDictionary.swift"; sourceTree = "<group>"; };
 		7D1000152F0D000100000001 /* OrderedJSONFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Parsing/OrderedJSONFormatter.swift"; sourceTree = "<group>"; };
 		7D1000162F0D000100000001 /* OrderedJSONParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Parsing/OrderedJSONParser.swift"; sourceTree = "<group>"; };
+		7D1000202F0D000100000001 /* JSONViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewModels/JSONViewModel.swift"; sourceTree = "<group>"; };
 		7D1000172F0D000100000001 /* OrderedJSONParserError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Parsing/OrderedJSONParserError.swift"; sourceTree = "<group>"; };
 		7D1000182F0D000100000001 /* NSNumber+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Utilities/Extensions/NSNumber+Extensions.swift"; sourceTree = "<group>"; };
 		7D1000192F0D000100000001 /* JSONPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Persistence/JSONPersistenceService.swift"; sourceTree = "<group>"; };
@@ -124,13 +124,13 @@
 				7C0E569F2CDC9607004B6C51 /* Theme.swift */,
 				52B773382C73C90B007F17CC /* JSONView.swift */,
 				52B7730B2C73C613007F17CC /* ContentView.swift */,
-				52B7730D2C73C613007F17CC /* Item.swift */,
 				7D1000112F0D000100000001 /* JSONNode.swift */,
 				7D1000122F0D000100000001 /* ParsedJSON.swift */,
 				7D1000132F0D000100000001 /* ValueType.swift */,
 				7D1000142F0D000100000001 /* OrderedDictionary.swift */,
 				7D1000152F0D000100000001 /* OrderedJSONFormatter.swift */,
 				7D1000162F0D000100000001 /* OrderedJSONParser.swift */,
+				7D1000202F0D000100000001 /* JSONViewModel.swift */,
 				7D1000172F0D000100000001 /* OrderedJSONParserError.swift */,
 				7D1000182F0D000100000001 /* NSNumber+Extensions.swift */,
 				7D1000192F0D000100000001 /* JSONPersistenceService.swift */,
@@ -311,8 +311,8 @@
 				7D1000042F0D000100000001 /* OrderedDictionary.swift in Sources */,
 				7D1000012F0D000100000001 /* JSONNode.swift in Sources */,
 				52B7730C2C73C613007F17CC /* ContentView.swift in Sources */,
-				52B7730E2C73C613007F17CC /* Item.swift in Sources */,
 				7D1000062F0D000100000001 /* OrderedJSONParser.swift in Sources */,
+				7D1000212F0D000100000001 /* JSONViewModel.swift in Sources */,
 				52B773392C73C90B007F17CC /* JSONView.swift in Sources */,
 				7D1000082F0D000100000001 /* NSNumber+Extensions.swift in Sources */,
 				7D1000092F0D000100000001 /* JSONPersistenceService.swift in Sources */,
@@ -483,7 +483,7 @@
 				CODE_SIGN_ENTITLEMENTS = "json-assistant/JSON_Assistant.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"json-assistant/Preview Content\"";
 				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
@@ -519,7 +519,7 @@
 				CODE_SIGN_ENTITLEMENTS = "json-assistant/JSON_Assistant.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"json-assistant/Preview Content\"";
 				DEVELOPMENT_TEAM = ZKYJ6G9GJP;
@@ -552,7 +552,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -571,7 +571,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -589,7 +589,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -606,7 +606,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
