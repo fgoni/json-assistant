@@ -495,10 +495,13 @@ final class JSON_AssistantTests: XCTestCase {
         await MainActor.run { viewModel.loadJSON(from: url) }
         await fulfillment(of: [saved], timeout: 3.0)
 
+        let expectedName = url.deletingPathExtension().lastPathComponent
         await MainActor.run {
             XCTAssertEqual(viewModel.parsedJSONs.count, 1)
             XCTAssertNotNil(viewModel.rootNode)
             XCTAssertTrue(viewModel.parsedJSONs.first?.content.contains("Celebrity Cruises") ?? false)
+            // The saved entry is named after the imported file (not "Unnamed").
+            XCTAssertEqual(viewModel.parsedJSONs.first?.name, expectedName)
         }
         cancellable?.cancel()
     }

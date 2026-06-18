@@ -182,7 +182,7 @@ class JSONViewModel: ObservableObject {
     }
 
 
-    func parseJSON(_ jsonString: String, autoExpand: Bool = true, saveOnSuccess: Bool = false) {
+    func parseJSON(_ jsonString: String, autoExpand: Bool = true, saveOnSuccess: Bool = false, saveName: String? = nil) {
         guard !jsonString.isEmpty else {
             parseWorkItem?.cancel()
             DispatchQueue.main.async {
@@ -209,18 +209,18 @@ class JSONViewModel: ObservableObject {
         if !autoExpand {
             parseWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                self?.performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess)
+                self?.performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess, saveName: saveName)
             }
             parseWorkItem = workItem
             DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3, execute: workItem)
         } else {
             // Immediate parsing for beautify/paste operations
             parseWorkItem?.cancel()
-            performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess)
+            performParsing(jsonString, autoExpand: autoExpand, saveOnSuccess: saveOnSuccess, saveName: saveName)
         }
     }
 
-    private func performParsing(_ jsonString: String, autoExpand: Bool, saveOnSuccess: Bool) {
+    private func performParsing(_ jsonString: String, autoExpand: Bool, saveOnSuccess: Bool, saveName: String? = nil) {
         do {
             var parser = OrderedJSONParser(jsonString)
             let parsedValue = try parser.parse()
@@ -260,7 +260,7 @@ class JSONViewModel: ObservableObject {
                     }
 
                     if saveOnSuccess {
-                        self.saveParsedJSONContent(autoExpand ? prettyString : jsonString)
+                        self.saveParsedJSONContent(autoExpand ? prettyString : jsonString, name: saveName)
                     }
                 }
             }
@@ -282,18 +282,18 @@ class JSONViewModel: ObservableObject {
 
     
     @discardableResult
-    func saveJSON(_ jsonString: String) -> ParsedJSON? {
+    func saveJSON(_ jsonString: String, name: String = "Unnamed") -> ParsedJSON? {
         guard !jsonString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         guard !parsedJSONs.contains(where: { $0.content == jsonString }) else { return nil }
-        
-        let newParsedJSON = ParsedJSON(id: UUID(), date: Date(), name: "Unnamed", content: jsonString)
+
+        let newParsedJSON = ParsedJSON(id: UUID(), date: Date(), name: name, content: jsonString)
         parsedJSONs.append(newParsedJSON)
         saveParsedJSONs()
         searchTokenCache[newParsedJSON.id] = nil
         return newParsedJSON
     }
 
-    private func saveParsedJSONContent(_ jsonString: String) {
+    private func saveParsedJSONContent(_ jsonString: String, name: String? = nil) {
         let trimmed = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -303,13 +303,13 @@ class JSONViewModel: ObservableObject {
             let updated = ParsedJSON(
                 id: existing.id,
                 date: Date(),
-                name: existing.name,
+                name: name ?? existing.name,
                 content: jsonString
             )
             parsedJSONs[index] = updated
             saveParsedJSONs()
             searchTokenCache[existing.id] = nil
-        } else if let saved = saveJSON(jsonString) {
+        } else if let saved = saveJSON(jsonString, name: name ?? "Unnamed") {
             selectedJSONID = saved.id
         }
     }
@@ -422,7 +422,7 @@ class JSONViewModel: ObservableObject {
         parseJSON(inputJSON, autoExpand: true, saveOnSuccess: true)
     }
 
-    /// Loads a `.json` file's contents into the editor and beautifies/saves it.
+    /// Loads a `.json` file's contents as a new saved entry named after the file.
     /// Wraps security-scoped access so drag-and-dropped files read correctly in the sandbox.
     func loadJSON(from url: URL) {
         let didStartAccess = url.startAccessingSecurityScopedResource()
@@ -430,8 +430,11 @@ class JSONViewModel: ObservableObject {
 
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
+            let name = url.deletingPathExtension().lastPathComponent
+            // Import as a fresh entry (don't overwrite whatever was selected).
+            selectedJSONID = nil
             setEditorText(content)
-            beautifyAndSaveJSON()
+            parseJSON(content, autoExpand: true, saveOnSuccess: true, saveName: name.isEmpty ? nil : name)
         } catch {
             errorMessage = "Could not read \(url.lastPathComponent): \(error.localizedDescription)"
         }
