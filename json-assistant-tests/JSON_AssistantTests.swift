@@ -475,6 +475,34 @@ final class JSON_AssistantTests: XCTestCase {
         XCTAssertTrue(JSONViewModel._searchMatchingNodeIDs(for: "Royal Caribbean", in: root).isEmpty)
     }
 
+    func testLoadJSONFromFileReadsAndSavesNewEntry() async throws {
+        let persistenceService = try makePersistenceService()
+        let viewModel = await MainActor.run { JSONViewModel(persistenceService: persistenceService) }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dropped-\(UUID().uuidString).json")
+        try #"{"line":"Celebrity Cruises","shipIds":[13524]}"#.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let saved = expectation(description: "dropped file parsed and saved")
+        var cancellable: AnyCancellable?
+        cancellable = await MainActor.run {
+            viewModel.$parsedJSONs.dropFirst().sink { entries in
+                if !entries.isEmpty { saved.fulfill() }
+            }
+        }
+
+        await MainActor.run { viewModel.loadJSON(from: url) }
+        await fulfillment(of: [saved], timeout: 3.0)
+
+        await MainActor.run {
+            XCTAssertEqual(viewModel.parsedJSONs.count, 1)
+            XCTAssertNotNil(viewModel.rootNode)
+            XCTAssertTrue(viewModel.parsedJSONs.first?.content.contains("Celebrity Cruises") ?? false)
+        }
+        cancellable?.cancel()
+    }
+
     private func makePersistenceService() throws -> JSONPersistenceService {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("JSON_AssistantTests.\(UUID().uuidString)", isDirectory: true)
