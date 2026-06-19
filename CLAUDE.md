@@ -8,6 +8,13 @@ The SwiftUI app resides in `JSON Assistant/`, with `JSON_AssistantApp.swift` boo
 - `xcodebuild -scheme "JSON Assistant" -destination 'platform=macOS' build` performs a headless debug build and surfaces compiler diagnostics.
 - `xcodebuild -scheme "JSON Assistant" test` runs both unit and UI test bundles; pass `-only-testing:JSON AssistantTests/FeatureNameTests` when iterating on a single case.
 
+## Release & Distribution
+Distribution is handled with the `asc` CLI (App Store Connect). **Do not use Fastlane** — it has been removed from this repo in favor of `asc`. Signing config lives in `.asc/` (`UploadExportOptions.plist`, provisioning profile). Typical flow:
+- `asc xcode version view` / `asc xcode version bump --type build` (or `--type patch/minor/major`) to inspect or bump versions — prefer this over editing `project.pbxproj` by hand.
+- `asc builds list --app "com.coffeedevs.JSON-Assistant"` to check what is already uploaded (build numbers are sequential; the next one must be higher than the latest).
+- Build artifacts: `xcodebuild archive` then `xcodebuild -exportArchive -exportOptionsPlist .asc/UploadExportOptions.plist` produce the signed `.pkg` (app-store).
+- Upload: `asc builds upload --app "com.coffeedevs.JSON-Assistant" --pkg <path> --version <v> --build-number <n>`.
+
 ## Coding Style & Naming Conventions
 Follow Xcode’s default 4-space indentation and let the editor’s “Re-Indent” (`⌃I`) keep Swift block scope tidy. Use UpperCamelCase for types/releases (e.g., `JSONViewModel`), lowerCamelCase for methods and properties (e.g., `parseJSON(_:)`), and SCREAMING_SNAKE_CASE only for static configuration keys. Favor SwiftUI modifiers over imperative layout, keep view structs lightweight, and move stateful logic into observable view models. Do not edit `Package.resolved` unless dependency versions truly change.
 
