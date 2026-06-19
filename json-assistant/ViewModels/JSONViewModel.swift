@@ -36,6 +36,26 @@ class JSONViewModel: ObservableObject {
     @Published private(set) var formattedSearchMatchOrder: [UUID] = []
     @Published private(set) var formattedSearchFocusedID: UUID?
     @Published private(set) var formattedSearchFocusedIndex: Int?
+
+    // MARK: - Query
+    /// The current query text driving the Query tab.
+    @Published var queryText: String = ""
+    /// The selected query language (jq / JMESPath / …).
+    @Published var selectedQueryEngine: QueryEngineKind = .jq
+    /// Inline error for an invalid query (syntax/parse/runtime), else nil.
+    @Published private(set) var queryErrorMessage: String?
+    /// Number of values the active query produced, or nil when no query is applied.
+    @Published private(set) var queryResultCount: Int?
+    /// The query result tree shown in the Query tab. Kept separate from
+    /// `rootNode` so running a query never disturbs the Formatted view.
+    @Published private(set) var queryResultNode: JSONNode?
+    /// The most recent successfully parsed document, queried non-destructively.
+    private var originalParsedValue: Any?
+    private var queryWorkItem: DispatchWorkItem?
+    /// Bumped on each query/restore so stale background builds can be discarded.
+    private var queryGeneration: Int = 0
+    private let queryDebounceInterval: TimeInterval = 0.3
+
     private(set) var isProgrammaticInputUpdate: Bool = false
     private var parseWorkItem: DispatchWorkItem?
     private var searchTokenCache: [UUID: [String]] = [:]
@@ -190,6 +210,7 @@ class JSONViewModel: ObservableObject {
                 self.errorMessage = nil
                 self.formattedSearchSnapshot = nil
                 self.clearFormattedSearchResults()
+                self.resetQueryState(clearText: false)
             }
             return
         }
@@ -201,6 +222,7 @@ class JSONViewModel: ObservableObject {
                 self.errorMessage = nil
                 self.formattedSearchSnapshot = nil
                 self.clearFormattedSearchResults()
+                self.resetQueryState(clearText: false)
             }
             return
         }
@@ -245,6 +267,7 @@ class JSONViewModel: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.rootNode = rootNode
+                    self.originalParsedValue = parsedValue
                     self.isLoadingJSON = false
                     self.applyFormattedSearchIfNeeded()
 
@@ -261,6 +284,12 @@ class JSONViewModel: ObservableObject {
 
                     if saveOnSuccess {
                         self.saveParsedJSONContent(autoExpand ? prettyString : jsonString, name: saveName)
+                    }
+
+                    // Re-apply an active query against the freshly parsed document.
+                    let trimmedQuery = self.queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedQuery.isEmpty {
+                        self.runQuery(trimmedQuery)
                     }
                 }
             }
@@ -447,6 +476,7 @@ class JSONViewModel: ObservableObject {
         errorMessage = nil
         formattedSearchSnapshot = nil
         clearFormattedSearchResults()
+        resetQueryState(clearText: true)
     }
 
     private func setEditorText(_ text: String) {
@@ -1415,5 +1445,119 @@ class JSONViewModel: ObservableObject {
             return
         }
         updateFormattedSearch(with: formattedSearchQuery, skipDebounce: true)
+    }
+
+    // MARK: - Query
+
+    /// Updates the active query, debounced. An empty query clears the result; a
+    /// non-empty one runs the selected engine. The Formatted view (`rootNode`)
+    /// is never touched — results live in `queryResultNode`.
+    func updateQuery(_ text: String, skipDebounce: Bool = false) {
+        queryText = text
+        queryWorkItem?.cancel()
+        queryWorkItem = nil
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            queryGeneration += 1   // discard any in-flight run
+            queryErrorMessage = nil
+            queryResultCount = nil
+            queryResultNode = nil
+            return
+        }
+
+        let work: () -> Void = { [weak self] in
+            self?.queryWorkItem = nil
+            self?.runQuery(trimmed)
+        }
+
+        if skipDebounce {
+            work()
+            return
+        }
+
+        let workItem = DispatchWorkItem(block: work)
+        queryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + queryDebounceInterval, execute: workItem)
+    }
+
+    /// Switches the active query engine and re-runs the current query (if any).
+    func setQueryEngine(_ kind: QueryEngineKind) {
+        guard kind != selectedQueryEngine else { return }
+        selectedQueryEngine = kind
+
+        let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            queryGeneration += 1
+            queryErrorMessage = nil
+            queryResultCount = nil
+            queryResultNode = nil
+        } else {
+            updateQuery(queryText, skipDebounce: true)
+        }
+    }
+
+    /// Runs `query` against the original document on a background queue using the
+    /// selected engine, building the result tree in `queryResultNode`. Stale runs
+    /// are discarded via `queryGeneration`.
+    private func runQuery(_ query: String) {
+        guard let input = originalParsedValue else {
+            queryErrorMessage = "No JSON to query"
+            queryResultCount = nil
+            queryResultNode = nil
+            return
+        }
+
+        queryGeneration += 1
+        let generation = queryGeneration
+        let engine = selectedQueryEngine.engine
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let result = try engine.run(query: query, on: input)
+                let derivedRoot = JSONNode(
+                    key: JSONNode.describeType(of: result.displayValue),
+                    value: result.displayValue,
+                    isRoot: true
+                )
+                DispatchQueue.main.async {
+                    guard let self = self, self.queryGeneration == generation else { return }
+                    self.queryErrorMessage = nil
+                    self.queryResultCount = result.count
+                    self.queryResultNode = derivedRoot
+                    self.applyAutoExpansion(to: derivedRoot)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self = self, self.queryGeneration == generation else { return }
+                    self.queryErrorMessage = (error as? LocalizedError)?.errorDescription
+                        ?? error.localizedDescription
+                    self.queryResultCount = nil
+                    self.queryResultNode = nil
+                }
+            }
+        }
+    }
+
+    /// Expands a freshly built tree using the same size heuristic as parsing.
+    private func applyAutoExpansion(to root: JSONNode) {
+        if inputJSON.utf8.count < 50_000 {
+            setExpansionState(for: root, isExpanded: true)
+        } else {
+            setExpanded(true, for: root.id)
+        }
+    }
+
+    /// Clears all query state. Used when starting a new entry or clearing input.
+    private func resetQueryState(clearText: Bool) {
+        queryWorkItem?.cancel()
+        queryWorkItem = nil
+        queryGeneration += 1
+        originalParsedValue = nil
+        queryErrorMessage = nil
+        queryResultCount = nil
+        queryResultNode = nil
+        if clearText { queryText = "" }
     }
 }

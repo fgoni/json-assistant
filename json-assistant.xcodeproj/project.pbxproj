@@ -27,6 +27,19 @@
 		52B7732A2C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */; };
 		52B773392C73C90B007F17CC /* JSONView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B773382C73C90B007F17CC /* JSONView.swift */; };
 		7C0E56A02CDC9607004B6C51 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0E569F2CDC9607004B6C51 /* Theme.swift */; };
+		7DA00000000000000000B001 /* JQAST.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A001 /* JQAST.swift */; };
+		7DA00000000000000000B002 /* JQError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A002 /* JQError.swift */; };
+		7DA00000000000000000B003 /* JQLexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A003 /* JQLexer.swift */; };
+		7DA00000000000000000B004 /* JQParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A004 /* JQParser.swift */; };
+		7DA00000000000000000B005 /* JQEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A005 /* JQEvaluator.swift */; };
+		7DA00000000000000000B006 /* JQEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A006 /* JQEngine.swift */; };
+		7DA00000000000000000B007 /* JQEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A007 /* JQEngineTests.swift */; };
+		7DA00000000000000000B008 /* QueryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A008 /* QueryEngine.swift */; };
+		7DA00000000000000000B009 /* JMESPathQueryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA00000000000000000A009 /* JMESPathQueryEngine.swift */; };
+		7DA0000000000000000000B00A /* JMESPathQueryEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA0000000000000000000A00A /* JMESPathQueryEngineTests.swift */; };
+		7DA0000000000000000000B00B /* JSONPathQueryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA0000000000000000000A00B /* JSONPathQueryEngine.swift */; };
+		7DA0000000000000000000B00C /* JSONPathQueryEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA0000000000000000000A00C /* JSONPathQueryEngineTests.swift */; };
+		7DA0000000000000000000C003 /* JMESPath in Frameworks */ = {isa = PBXBuildFile; productRef = 7DA0000000000000000000C002 /* JMESPath */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +84,18 @@
 		52B773292C73C615007F17CC /* JSON_AssistantUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON_AssistantUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		52B773382C73C90B007F17CC /* JSONView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONView.swift; sourceTree = "<group>"; };
 		7C0E569F2CDC9607004B6C51 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		7DA00000000000000000A001 /* JQAST.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQAST.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A002 /* JQError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQError.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A003 /* JQLexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQLexer.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A004 /* JQParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQParser.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A005 /* JQEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQEvaluator.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A006 /* JQEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JQEngine.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A007 /* JQEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JQEngineTests.swift; sourceTree = "<group>"; };
+		7DA00000000000000000A008 /* QueryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/QueryEngine.swift"; sourceTree = "<group>"; };
+		7DA00000000000000000A009 /* JMESPathQueryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JMESPathQueryEngine.swift"; sourceTree = "<group>"; };
+		7DA0000000000000000000A00A /* JMESPathQueryEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JMESPathQueryEngineTests.swift; sourceTree = "<group>"; };
+		7DA0000000000000000000A00B /* JSONPathQueryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Query/JSONPathQueryEngine.swift"; sourceTree = "<group>"; };
+		7DA0000000000000000000A00C /* JSONPathQueryEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONPathQueryEngineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +103,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7DA0000000000000000000C003 /* JMESPath in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +156,15 @@
 				7D1000142F0D000100000001 /* OrderedDictionary.swift */,
 				7D1000152F0D000100000001 /* OrderedJSONFormatter.swift */,
 				7D1000162F0D000100000001 /* OrderedJSONParser.swift */,
+				7DA00000000000000000A002 /* JQError.swift */,
+				7DA00000000000000000A001 /* JQAST.swift */,
+				7DA00000000000000000A003 /* JQLexer.swift */,
+				7DA00000000000000000A004 /* JQParser.swift */,
+				7DA00000000000000000A005 /* JQEvaluator.swift */,
+				7DA00000000000000000A006 /* JQEngine.swift */,
+				7DA00000000000000000A008 /* QueryEngine.swift */,
+				7DA00000000000000000A009 /* JMESPathQueryEngine.swift */,
+				7DA0000000000000000000A00B /* JSONPathQueryEngine.swift */,
 				7D1000202F0D000100000001 /* JSONViewModel.swift */,
 				7D1000172F0D000100000001 /* OrderedJSONParserError.swift */,
 				7D1000182F0D000100000001 /* NSNumber+Extensions.swift */,
@@ -155,6 +190,9 @@
 			isa = PBXGroup;
 			children = (
 				52B7731D2C73C615007F17CC /* JSON_AssistantTests.swift */,
+				7DA00000000000000000A007 /* JQEngineTests.swift */,
+				7DA0000000000000000000A00A /* JMESPathQueryEngineTests.swift */,
+				7DA0000000000000000000A00C /* JSONPathQueryEngineTests.swift */,
 			);
 			path = "json-assistant-tests";
 			sourceTree = "<group>";
@@ -185,6 +223,7 @@
 			);
 			name = "json-assistant";
 			packageProductDependencies = (
+				7DA0000000000000000000C002 /* JMESPath */,
 			);
 			productName = "JSON Assistant";
 			productReference = 52B773062C73C613007F17CC /* JSON Assistant.app */;
@@ -259,6 +298,7 @@
 			);
 			mainGroup = 52B772FD2C73C613007F17CC;
 			packageReferences = (
+				7DA0000000000000000000C001 /* XCRemoteSwiftPackageReference "jmespath.swift" */,
 			);
 			productRefGroup = 52B773072C73C613007F17CC /* Products */;
 			projectDirPath = "";
@@ -270,6 +310,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7DA0000000000000000000C001 /* XCRemoteSwiftPackageReference "jmespath.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jmespath/jmespath.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7DA0000000000000000000C002 /* JMESPath */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7DA0000000000000000000C001 /* XCRemoteSwiftPackageReference "jmespath.swift" */;
+			productName = JMESPath;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		52B773042C73C613007F17CC /* Resources */ = {
@@ -312,6 +371,15 @@
 				7D1000012F0D000100000001 /* JSONNode.swift in Sources */,
 				52B7730C2C73C613007F17CC /* ContentView.swift in Sources */,
 				7D1000062F0D000100000001 /* OrderedJSONParser.swift in Sources */,
+				7DA00000000000000000B001 /* JQAST.swift in Sources */,
+				7DA00000000000000000B002 /* JQError.swift in Sources */,
+				7DA00000000000000000B003 /* JQLexer.swift in Sources */,
+				7DA00000000000000000B004 /* JQParser.swift in Sources */,
+				7DA00000000000000000B005 /* JQEvaluator.swift in Sources */,
+				7DA00000000000000000B006 /* JQEngine.swift in Sources */,
+				7DA00000000000000000B008 /* QueryEngine.swift in Sources */,
+				7DA00000000000000000B009 /* JMESPathQueryEngine.swift in Sources */,
+				7DA0000000000000000000B00B /* JSONPathQueryEngine.swift in Sources */,
 				7D1000212F0D000100000001 /* JSONViewModel.swift in Sources */,
 				52B773392C73C90B007F17CC /* JSONView.swift in Sources */,
 				7D1000082F0D000100000001 /* NSNumber+Extensions.swift in Sources */,
@@ -325,6 +393,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				52B7731E2C73C615007F17CC /* JSON_AssistantTests.swift in Sources */,
+				7DA00000000000000000B007 /* JQEngineTests.swift in Sources */,
+				7DA0000000000000000000B00A /* JMESPathQueryEngineTests.swift in Sources */,
+				7DA0000000000000000000B00C /* JSONPathQueryEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

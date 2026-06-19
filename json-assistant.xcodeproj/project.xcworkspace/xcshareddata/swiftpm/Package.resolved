@@ -1,0 +1,15 @@
+{
+  "originHash" : "10501d8e2fe5c2c6dc8b0056a10e2277acbb183b51276122ecd56fa489b394bd",
+  "pins" : [
+    {
+      "identity" : "jmespath.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jmespath/jmespath.swift",
+      "state" : {
+        "revision" : "3877a5060e85ae33e3b9fe51ab581784f65ec80e",
+        "version" : "1.0.3"
+      }
+    }
+  ],
+  "version" : 3
+}

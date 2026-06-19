@@ -1048,6 +1048,49 @@ struct JSONInputView: View {
     }
 }
 
+/// A themed segmented control. Replaces SwiftUI's `Picker(.segmented)`, whose
+/// unselected-segment labels render with poor contrast against the app's custom
+/// palette (near-invisible on the light surface). Selected uses the accent fill
+/// with `accentButtonText`; unselected uses `text` for guaranteed legibility.
+private struct ThemedSegmentedControl<Value: Hashable>: View {
+    let options: [(value: Value, label: String)]
+    let selection: Value
+    let palette: ThemePalette
+    let onSelect: (Value) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options.indices, id: \.self) { index in
+                let option = options[index]
+                let isSelected = option.value == selection
+                Button {
+                    onSelect(option.value)
+                } label: {
+                    Text(option.label)
+                        .font(.themedUI(size: 12))
+                        .fontWeight(.semibold)
+                        .foregroundColor(isSelected ? palette.accentButtonText : palette.text)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(isSelected ? palette.accent : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(palette.background.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+        )
+    }
+}
+
 struct JSONOutputView: View {
     @ObservedObject var jsonViewModel: JSONViewModel
     @ObservedObject var themeSettings: ThemeSettings
@@ -1055,8 +1098,73 @@ struct JSONOutputView: View {
     @State private var localSearchText: String = ""
     @State private var searchDebounceTimer: Timer?
     @State private var lastSelectedJSONID: UUID?
+    @State private var localQueryText: String = ""
+    @State private var activeOutputTab: OutputTab = .formatted
+
+    /// The two modes of the output pane: the document tree and the query
+    /// workbench. They are kept fully separate so a query never disturbs the
+    /// Formatted view.
+    private enum OutputTab: Hashable { case formatted, query }
 
     var body: some View {
+        VStack(spacing: 12) {
+            ThemedSegmentedControl(
+                options: [(OutputTab.formatted, "Formatted"), (OutputTab.query, "Query")],
+                selection: activeOutputTab,
+                palette: palette
+            ) { activeOutputTab = $0 }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if activeOutputTab == .formatted {
+                formattedTab
+            } else {
+                queryTab
+            }
+        }
+        .onChange(of: jsonViewModel.selectedJSONID) { _, newSelectedID in
+            // Save current search state for previous JSON
+            if let lastID = lastSelectedJSONID {
+                jsonViewModel.saveSearchState(for: lastID, query: localSearchText)
+            }
+
+            // Update tracking
+            lastSelectedJSONID = newSelectedID
+
+            // Cancel any pending search
+            searchDebounceTimer?.invalidate()
+            searchDebounceTimer = nil
+
+            // Clear the search immediately (both UI and viewModel)
+            localSearchText = ""
+            jsonViewModel.updateFormattedSearch(with: "")
+
+            // Clear any active query so the new document shows unfiltered.
+            localQueryText = ""
+            jsonViewModel.updateQuery("", skipDebounce: true)
+
+            // Restore or set search state for new JSON
+            if let newID = newSelectedID {
+                if let savedSearch = jsonViewModel.getSearchState(for: newID) {
+                    // Restore previous search for this JSON after a brief delay
+                    // to ensure snapshot is created from the new JSON
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        localSearchText = savedSearch
+                        jsonViewModel.updateFormattedSearch(with: savedSearch, skipDebounce: true)
+                    }
+                }
+            }
+        }
+        .onChange(of: themeSettings.formattedJSONWordWrap) { _, _ in
+            // Trigger re-render when word-wrap setting changes
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(palette.background)
+    }
+
+    // MARK: - Formatted tab
+
+    private var formattedTab: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 Text("Formatted View")
@@ -1113,35 +1221,6 @@ struct JSONOutputView: View {
                 .disabled(jsonViewModel.isExpandingOrCollapsing)
                 .keyboardShortcut(KeyEquivalent("="), modifiers: [.command, .option])
             }
-            .onChange(of: jsonViewModel.selectedJSONID) { _, newSelectedID in
-                // Save current search state for previous JSON
-                if let lastID = lastSelectedJSONID {
-                    jsonViewModel.saveSearchState(for: lastID, query: localSearchText)
-                }
-
-                // Update tracking
-                lastSelectedJSONID = newSelectedID
-
-                // Cancel any pending search
-                searchDebounceTimer?.invalidate()
-                searchDebounceTimer = nil
-
-                // Clear the search immediately (both UI and viewModel)
-                localSearchText = ""
-                jsonViewModel.updateFormattedSearch(with: "")
-
-                // Restore or set search state for new JSON
-                if let newID = newSelectedID {
-                    if let savedSearch = jsonViewModel.getSearchState(for: newID) {
-                        // Restore previous search for this JSON after a brief delay
-                        // to ensure snapshot is created from the new JSON
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            localSearchText = savedSearch
-                            jsonViewModel.updateFormattedSearch(with: savedSearch, skipDebounce: true)
-                        }
-                    }
-                }
-            }
 
             if let truncation = jsonViewModel.truncationSummary, jsonViewModel.rootNode != nil {
                 truncationBanner(truncation)
@@ -1181,12 +1260,6 @@ struct JSONOutputView: View {
                 )
             }
         }
-        .onChange(of: themeSettings.formattedJSONWordWrap) { _, _ in
-            // Trigger re-render when word-wrap setting changes
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.background)
     }
 
     @ViewBuilder
@@ -1230,6 +1303,124 @@ struct JSONOutputView: View {
                 .stroke(palette.accent.opacity(0.35), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    // MARK: - Query tab
+
+    private var queryTab: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Text("Query")
+                    .font(.themedUI(size: 12))
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.muted)
+                enginePicker
+                Spacer()
+            }
+
+            queryBar
+
+            queryResultArea
+        }
+    }
+
+    private var enginePicker: some View {
+        ThemedSegmentedControl(
+            options: QueryEngineKind.available.map { ($0, $0.displayName) },
+            selection: jsonViewModel.selectedQueryEngine,
+            palette: palette
+        ) { jsonViewModel.setQueryEngine($0) }
+        .help("Choose the query language")
+    }
+
+    @ViewBuilder
+    private var queryResultArea: some View {
+        if let resultNode = jsonViewModel.queryResultNode {
+            JSONTreeView(rootNode: resultNode, viewModel: jsonViewModel, palette: palette, themeSettings: themeSettings)
+                .font(.themedCode(size: CGFloat(themeSettings.formattedJSONFontSize)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(palette.surface)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(palette.punctuation.opacity(0.35), lineWidth: 1)
+                )
+        } else {
+            JSONPlaceholderView(
+                palette: palette,
+                isError: false,
+                headline: jsonViewModel.rootNode == nil ? "No JSON to query" : "Type a query to begin",
+                detail: jsonViewModel.rootNode == nil
+                    ? nil
+                    : "Results appear here and never change the Formatted view."
+            )
+        }
+    }
+
+    private var queryBar: some View {
+        let hasError = jsonViewModel.queryErrorMessage != nil
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "curlybraces")
+                    .font(.themedCode(size: 12))
+                    .foregroundColor(hasError ? .red : palette.muted)
+
+                TextField(
+                    jsonViewModel.selectedQueryEngine.placeholder,
+                    text: Binding(
+                        get: { localQueryText },
+                        set: { newValue in
+                            localQueryText = newValue
+                            jsonViewModel.updateQuery(newValue)
+                        }
+                    )
+                )
+                .textFieldStyle(.plain)
+                .font(.themedCode(size: 12))
+                .foregroundColor(palette.text)
+                .tint(palette.accent)
+                .autocorrectionDisabled(true)
+
+                if let count = jsonViewModel.queryResultCount, !localQueryText.isEmpty, !hasError {
+                    Text(count == 1 ? "1 result" : "\(count) results")
+                        .font(.themedUI(size: 11))
+                        .foregroundColor(palette.muted)
+                        .fixedSize()
+                }
+
+                if !localQueryText.isEmpty {
+                    Button {
+                        localQueryText = ""
+                        jsonViewModel.updateQuery("", skipDebounce: true)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.themedUI(size: 12))
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.muted.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear query")
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(palette.background.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(hasError ? Color.red.opacity(0.6) : palette.punctuation.opacity(0.35), lineWidth: 1)
+            )
+
+            if let error = jsonViewModel.queryErrorMessage {
+                Text(error)
+                    .font(.themedUI(size: 11))
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var formattedSearchControls: some View {
