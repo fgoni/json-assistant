@@ -27,7 +27,30 @@ class JSONViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isLoadingJSON: Bool = false
     @Published var parsedJSONs: [ParsedJSON] = []
-    @Published var selectedJSONID: UUID?
+    @Published var selectedJSONID: UUID? {
+        didSet {
+            if let id = selectedJSONID?.uuidString {
+                UserDefaults.standard.set(id, forKey: Self.lastSelectedIDKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lastSelectedIDKey)
+            }
+        }
+    }
+
+    /// UserDefaults keys for cross-launch UX state.
+    private static let lastSelectedIDKey = "lastSelectedJSONID"
+    private static let lastQueryEngineKey = "lastQueryEngine"
+
+    /// The engine to use for files that have no saved engine (new entries and
+    /// pre-existing documents). Tracks the last engine the user picked so a fresh
+    /// document inherits their preference instead of always defaulting to jq.
+    private var lastQueryEngine: QueryEngineKind {
+        get {
+            let raw = UserDefaults.standard.string(forKey: Self.lastQueryEngineKey) ?? ""
+            return QueryEngineKind(rawValue: raw) ?? .jq
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Self.lastQueryEngineKey) }
+    }
     @Published var isSubmittingFeedback: Bool = false
     @Published var feedbackSubmissionMessage: String?
     @Published var feedbackSubmissionIsError: Bool = false
@@ -81,6 +104,18 @@ class JSONViewModel: ObservableObject {
     init(persistenceService: JSONPersistenceService = JSONPersistenceService()) {
         self.persistenceService = persistenceService
         loadSavedJSONs()
+        selectedQueryEngine = lastQueryEngine
+        restoreLastSelectedJSON()
+    }
+
+    /// Reopens the document that was selected when the app last closed, restoring
+    /// its content and per-file query/engine. No-op if nothing was selected or the
+    /// document was since deleted, leaving the app in its empty state.
+    private func restoreLastSelectedJSON() {
+        guard let raw = UserDefaults.standard.string(forKey: Self.lastSelectedIDKey),
+              let id = UUID(uuidString: raw),
+              let json = parsedJSONs.first(where: { $0.id == id }) else { return }
+        loadSavedJSON(json)
     }
 
     private func rebuildNodeLookup() {
@@ -333,7 +368,10 @@ class JSONViewModel: ObservableObject {
                 id: existing.id,
                 date: Date(),
                 name: name ?? existing.name,
-                content: jsonString
+                content: jsonString,
+                query: existing.query,
+                queryEngine: existing.queryEngine,
+                searchQuery: existing.searchQuery
             )
             parsedJSONs[index] = updated
             saveParsedJSONs()
@@ -344,9 +382,41 @@ class JSONViewModel: ObservableObject {
     }
     
     func loadSavedJSON(_ json: ParsedJSON) {
+        // Persist the outgoing file's workbench before switching live state.
+        persistSelectedFileWorkbench()
+        // Restore the incoming file's engine + query *before* parsing so the
+        // post-parse hook in `performParsing` re-runs the query automatically.
+        selectedQueryEngine = json.queryEngine.flatMap { QueryEngineKind(rawValue: $0) } ?? lastQueryEngine
+        queryText = json.query ?? ""
         setEditorText(json.content)
         selectedJSONID = json.id
         beautifyJSON()
+    }
+
+    /// Writes the live query/engine/search into the currently selected file and
+    /// persists to disk, so per-file workbench state survives relaunches. No-op
+    /// when nothing is selected.
+    private func persistSelectedFileWorkbench() {
+        guard let id = selectedJSONID,
+              let index = parsedJSONs.firstIndex(where: { $0.id == id }) else { return }
+
+        let trimmedQuery = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSearch = formattedSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let newQuery = trimmedQuery.isEmpty ? nil : queryText
+        let newEngine = selectedQueryEngine.rawValue
+        let newSearch = trimmedSearch.isEmpty ? nil : formattedSearchQuery
+
+        // Avoid redundant disk writes when nothing changed.
+        let existing = parsedJSONs[index]
+        guard existing.query != newQuery
+            || existing.queryEngine != newEngine
+            || existing.searchQuery != newSearch else { return }
+
+        parsedJSONs[index].query = newQuery
+        parsedJSONs[index].queryEngine = newEngine
+        parsedJSONs[index].searchQuery = newSearch
+        saveParsedJSONs()
     }
     
     func deleteJSON(_ json: ParsedJSON) {
@@ -470,6 +540,8 @@ class JSONViewModel: ObservableObject {
     }
 
     func startNewEntry() {
+        // Persist the outgoing file's workbench before discarding live state.
+        persistSelectedFileWorkbench()
         selectedJSONID = nil
         setEditorText("")
         rootNode = nil
@@ -477,6 +549,8 @@ class JSONViewModel: ObservableObject {
         formattedSearchSnapshot = nil
         clearFormattedSearchResults()
         resetQueryState(clearText: true)
+        // A fresh document inherits the last engine the user chose.
+        selectedQueryEngine = lastQueryEngine
     }
 
     private func setEditorText(_ text: String) {
@@ -851,10 +925,20 @@ class JSONViewModel: ObservableObject {
 
     func saveSearchState(for rootID: UUID, query: String) {
         searchStateByRootID[rootID] = query
+        // Mirror to the persisted document so the search survives relaunches.
+        if let index = parsedJSONs.firstIndex(where: { $0.id == rootID }) {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let newSearch = trimmed.isEmpty ? nil : query
+            if parsedJSONs[index].searchQuery != newSearch {
+                parsedJSONs[index].searchQuery = newSearch
+                saveParsedJSONs()
+            }
+        }
     }
 
     func getSearchState(for rootID: UUID) -> String? {
-        return searchStateByRootID[rootID]
+        if let inMemory = searchStateByRootID[rootID] { return inMemory }
+        return parsedJSONs.first(where: { $0.id == rootID })?.searchQuery
     }
 
     private func matchesSearch(_ parsed: ParsedJSON, query: String) -> Bool {
@@ -1464,12 +1548,14 @@ class JSONViewModel: ObservableObject {
             queryErrorMessage = nil
             queryResultCount = nil
             queryResultNode = nil
+            persistSelectedFileWorkbench()
             return
         }
 
         let work: () -> Void = { [weak self] in
             self?.queryWorkItem = nil
             self?.runQuery(trimmed)
+            self?.persistSelectedFileWorkbench()
         }
 
         if skipDebounce {
@@ -1486,6 +1572,8 @@ class JSONViewModel: ObservableObject {
     func setQueryEngine(_ kind: QueryEngineKind) {
         guard kind != selectedQueryEngine else { return }
         selectedQueryEngine = kind
+        // Remember as the default engine for future new documents.
+        lastQueryEngine = kind
 
         let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -1496,6 +1584,7 @@ class JSONViewModel: ObservableObject {
         } else {
             updateQuery(queryText, skipDebounce: true)
         }
+        persistSelectedFileWorkbench()
     }
 
     /// Runs `query` against the original document on a background queue using the

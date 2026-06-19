@@ -1099,12 +1099,13 @@ struct JSONOutputView: View {
     @State private var searchDebounceTimer: Timer?
     @State private var lastSelectedJSONID: UUID?
     @State private var localQueryText: String = ""
-    @State private var activeOutputTab: OutputTab = .formatted
+    @State private var activeOutputTab: OutputTab =
+        OutputTab(rawValue: UserDefaults.standard.string(forKey: "activeOutputTab") ?? "") ?? .formatted
 
     /// The two modes of the output pane: the document tree and the query
     /// workbench. They are kept fully separate so a query never disturbs the
     /// Formatted view.
-    private enum OutputTab: Hashable { case formatted, query }
+    private enum OutputTab: String, Hashable { case formatted, query }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1138,9 +1139,9 @@ struct JSONOutputView: View {
             localSearchText = ""
             jsonViewModel.updateFormattedSearch(with: "")
 
-            // Clear any active query so the new document shows unfiltered.
-            localQueryText = ""
-            jsonViewModel.updateQuery("", skipDebounce: true)
+            // Mirror the per-file query the view model restored for this document
+            // (empty for a new/cleared entry). The parse hook re-runs it.
+            localQueryText = jsonViewModel.queryText
 
             // Restore or set search state for new JSON
             if let newID = newSelectedID {
@@ -1153,6 +1154,24 @@ struct JSONOutputView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            // The view model may have restored a document during init (before this
+            // view existed), so `onChange(selectedJSONID)` never fired. Sync the
+            // local mirrors and per-file search for that restored document.
+            lastSelectedJSONID = jsonViewModel.selectedJSONID
+            localQueryText = jsonViewModel.queryText
+            if let id = jsonViewModel.selectedJSONID,
+               let savedSearch = jsonViewModel.getSearchState(for: id) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    localSearchText = savedSearch
+                    jsonViewModel.updateFormattedSearch(with: savedSearch, skipDebounce: true)
+                }
+            }
+        }
+        .onChange(of: activeOutputTab) { _, newTab in
+            // Remember the last-used output mode across launches.
+            UserDefaults.standard.set(newTab.rawValue, forKey: "activeOutputTab")
         }
         .onChange(of: themeSettings.formattedJSONWordWrap) { _, _ in
             // Trigger re-render when word-wrap setting changes
